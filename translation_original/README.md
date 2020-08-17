@@ -1,6 +1,6 @@
 # 翻译原文存放目录
 
-本目录主要存放 https://github.com/vikyd/note 中的译文的原文文件。
+本目录主要存放 https://github.com/vikyd/note 中的译文对应的英文原文。
 
 主要包含格式：
 
