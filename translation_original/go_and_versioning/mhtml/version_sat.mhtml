@@ -1,0 +1,1091 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://research.swtch.com/version-sat
+Subject: research!rsc: Version SAT
+Date: Mon, 17 Aug 2020 02:22:00 -0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----"
+
+
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/html
+Content-ID: <frame-90C6D1BCC9D83888560A60E29768E350@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://research.swtch.com/version-sat
+
+<!DOCTYPE html><html class=3D"wf-caflischscriptpro-n4-active wf-minionpro-n=
+7-active wf-minionpro-n4-active wf-minionpro-i7-active wf-minionpro-i4-acti=
+ve wf-active"><head><meta http-equiv=3D"Content-Type" content=3D"text/html;=
+ charset=3DUTF-8"><link rel=3D"stylesheet" type=3D"text/css" href=3D"cid:cs=
+s-50c00595-be5a-4c30-98e5-744428ed042a@mhtml.blink" /><link rel=3D"styleshe=
+et" type=3D"text/css" href=3D"cid:css-e94aa08c-b04b-47b1-8502-7427081b6745@=
+mhtml.blink" /><link rel=3D"stylesheet" type=3D"text/css" href=3D"cid:css-f=
+d1b5cbd-d33f-4603-b70e-18e2abcc1b88@mhtml.blink" /><link rel=3D"stylesheet"=
+ type=3D"text/css" href=3D"cid:css-c13bf651-75c9-4ba3-91c9-41831ece616f@mht=
+ml.blink" />
+   =20
+    <title>research!rsc: Version SAT</title>
+    <link rel=3D"alternate" type=3D"application/atom+xml" title=3D"research=
+!rsc - Atom" href=3D"http://research.swtch.com/feed.atom">
+   =20
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1"=
+>
+<link href=3D"https://fonts.googleapis.com/css?family=3DInconsolata:400,700=
+" rel=3D"stylesheet" type=3D"text/css">
+
+
+
+
+  </head>
+  <body>
+   =20
+<div class=3D"header">
+  <h3><a href=3D"https://research.swtch.com/">research!rsc</a></h3>
+  <h4>Thoughts and links about programming,
+    by <a href=3D"https://swtch.com/~rsc/" rel=3D"author">Russ Cox</a> </h4=
+>
+  <a class=3D"rss" href=3D"https://research.swtch.com/feed.atom"><img src=
+=3D"https://research.swtch.com/feed-icon-14x14.png"></a>
+</div>
+
+    <div class=3D"main">
+      <div class=3D"article">
+        <h1>Version SAT
+       =20
+        <div class=3D"normal">
+        <div class=3D"when">
+         =20
+            Posted on Tuesday, December 13, 2016.
+           =20
+         =20
+        </div>
+        </div>
+        </h1>
+       =20
+
+
+<p>
+Dependency hell is NP-complete. But maybe we can climb out.
+
+</p><p>
+The package version selection problem is to find a set of dependencies that=
+ can be used to build a top-level package P that is complete (all dependenc=
+ies satisfied) and compatible (no two incompatible packages are selected). =
+There may be no such set, because of the diamond dependency problem: perhap=
+s A needs B and C; B needs D version 1, not 2; and C needs D version 2, not=
+ 1. In this case, assuming it's not possible to choose both versions of D, =
+there is no way to build A.
+
+</p><p>
+</p><center><img src=3D"https://research.swtch.com/version-sat.svg"></cente=
+r>
+
+<p>
+A package manager needs an algorithm to select package versions: when you r=
+un <code>apt-get install perl</code>, it may assume you mean the latest ver=
+sion of Perl, but then it has to find a way to satisfy Perl's transitive de=
+pendencies, or else to print an understandable explanation of why Perl can'=
+t be installed. You might reasonably wonder: how expensive is it to solve t=
+his problem, in the worst case? You probably don't want your package manage=
+r to take hours or days or years to decide whether it can install Perl.
+
+</p><p>
+Unfortunately, the version selection problem is NP-complete,
+which means that we're exceedingly unlikely to find an algorithm guaranteed=
+ to run quickly on every input.
+This post gives a proof of NP-completeness for version selection,
+looks at how existing package managers cope,
+and briefly discusses possible approaches to avoid an NP-complete task.
+<a class=3D"anchor" href=3D"https://research.swtch.com/version-sat#proof"><=
+/a></p><h2 id=3D"proof"><a class=3D"anchor" href=3D"https://research.swtch.=
+com/version-sat#proof">Proof of NP-Completeness</a></h2>
+
+
+<p>
+To consider NP-completeness, we need to shift from our modern world of algo=
+rithms with rich outputs to the limited world of complexity theory,
+where algorithms have one boolean output: yes or no.
+In this world of complexity theory, we'll define the VERSION problem (they'=
+re always all caps) to ask whether there is a valid version selection.
+This boolean VERSION problem is only half of our original problem, and we c=
+an prove that it's NP-complete.
+To do so, we need to prove two separate facts: that VERSION is in NP and th=
+at VERSION is NP-hard.
+
+</p><p>
+A problem is in NP if every =E2=80=9Cyes=E2=80=9D answer has an easily-chec=
+ked polynomial-size explanation.
+
+</p><p>
+VERSION is in NP, because any =E2=80=9Cyes=E2=80=9D answer can be explained=
+ by listing the selected package versions.
+This list is no bigger than the input and can be checked for correctness in=
+ time no worse than quadratic
+in the input (probably linear, depending on details of the computing model)=
+.
+
+</p><p>
+A problem is NP-hard if an efficient solution for that problem can be adapt=
+ed into an efficient solution to <i>every</i> other problem in NP.
+That's a pretty tall order, but it is enough for us to show how to adapt an=
+ efficient solution for VERSION
+into an efficient solution for one other NP-hard problem (call it HARD) and=
+ then rely on the fact that
+someone else has proven that an efficient solution for HARD can be adapted =
+into an efficient solution
+for every other problem in NP.
+
+</p><p>
+A useful example of an NP-complete (in NP and NP-hard) problem is 3-SAT.
+In 3-SAT, the input is a boolean formula over some number of boolean variab=
+les,
+constrained to be a conjunction (an AND) of some number of disjunctions (OR=
+s)
+of three literals each, where a literal is a variable or its negation.
+For example, here is an input for 3-SAT (=E2=88=A7 means AND, =E2=88=A8 mea=
+ns OR, and =C2=AC means NOT):
+
+</p><p>
+</p><center>(=C2=AC=E2=80=89<i>x</i><sub>1</sub> =E2=88=A8 =C2=AC=E2=80=89<=
+i>x</i><sub>2</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>3</sub>)=E2=80=82=
+<font style=3D"font-size: 120%;">=E2=88=A7</font>=E2=80=82(=C2=AC=E2=80=89<=
+i>x</i><sub>2</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>3</sub> =E2=88=A8=
+ =C2=AC=E2=80=89<i>x</i><sub>4</sub>)=E2=80=82<font style=3D"font-size: 120=
+%;">=E2=88=A7</font>=E2=80=82(=C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8=
+ =C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>3</sub>)=E2=80=
+=82<font style=3D"font-size: 120%;">=E2=88=A7</font>=E2=80=82(<i>x</i><sub>=
+2</sub> =E2=88=A8 <i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>2</sub>)</cen=
+ter>
+
+<p>
+It is satisfiable by exactly one assignment to the variables=E2=80=94<i>x</=
+i><sub>1</sub>=E2=80=89=3D=E2=80=890, <i>x</i><sub>2</sub>=E2=80=89=3D=E2=
+=80=891, <i>x</i><sub>3</sub>=E2=80=89=3D=E2=80=891, <i>x</i><sub>4</sub>=
+=E2=80=89=3D=E2=80=890=E2=80=94so the answer is yes.
+
+</p><p>
+If we extend it to add one more clause,
+
+</p><p>
+</p><center>(=C2=AC=E2=80=89<i>x</i><sub>1</sub> =E2=88=A8 =C2=AC=E2=80=89<=
+i>x</i><sub>2</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>3</sub>)=E2=80=82=
+<font style=3D"font-size: 120%;">=E2=88=A7</font>=E2=80=82(=C2=AC=E2=80=89<=
+i>x</i><sub>2</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>3</sub> =E2=88=A8=
+ =C2=AC=E2=80=89<i>x</i><sub>4</sub>)=E2=80=82<font style=3D"font-size: 120=
+%;">=E2=88=A7</font>=E2=80=82(=C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8=
+ =C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>3</sub>)=E2=80=
+=82<font style=3D"font-size: 120%;">=E2=88=A7</font>=E2=80=82(<i>x</i><sub>=
+2</sub> =E2=88=A8 <i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>2</sub>)=E2=
+=80=82<font style=3D"font-size: 120%;">=E2=88=A7</font>=E2=80=82(<i>x</i><s=
+ub>1</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i>=
+<sub>4</sub>)</center>
+
+<p>
+then it is unsatisfiable by any assignment to the variables, so the answer =
+is no.
+
+</p><p>
+The general form of a 3-SAT instance is a formula <i>F</i> that is the conj=
+unction of
+clauses <i>C</i><sub>1</sub> through <i>C</i><sub><i>n</i></sub> over varia=
+bles <i>V</i><sub>1</sub> through <i>V</i><sub><i>m</i></sub>,
+where each <i>C</i><sub><i>i</i></sub> is a disjunction of three literals, =
+each of the form
+<i>x</i><sub><i>j</i></sub> or =C2=AC=E2=80=89<i>x</i><sub><i>j</i></sub>  =
+ for some variable <i>x</i><sub><i>j</i></sub> .
+Duplicate literals in a clause are allowed, as in (=C2=AC=E2=80=89<i>x</i><=
+sub>2</sub> =E2=88=A8 =C2=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i=
+><sub>3</sub>) and (<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>2</sub> =E2=
+=88=A8 <i>x</i><sub>2</sub>) above.
+
+</p><p>
+We can convert any 3-SAT instance to a VERSION instance with the same answe=
+r.
+About the package manager we will assume only that:
+</p><ol>
+<li>
+A package can list zero or more packages or specific package versions as de=
+pendencies.
+</li><li>
+To install a package, all its dependencies must be installed.
+</li><li>
+Each version of a package can have different dependencies.
+</li><li>
+Two different versions of a package cannot be installed simultaneously.</li=
+></ol>
+
+
+<p>
+We'll abbreviate package <code>P</code> version <code>V</code> as <code>P:V=
+</code>
+(now using fixed-width font for packages to distinguish from the standard m=
+ath italics for formulas).
+A dependency on <code>P:V</code> must be satisfied by version <code>V</code=
+> exactly, not <code>V</code>-1 and not <code>V</code>+1.
+
+</p><p>
+Given a 3-SAT formula, we can create a package <code>F</code> representing =
+the whole formula,
+packages <code>C1</code>, <code>C2</code>, ..., <code>C<i>n</i></code> repr=
+esenting each clause,
+and packages <code>X1</code>, <code>X2</code>, ..., <code>X<i>m</i></code> =
+representing each variable.
+
+</p><p>
+Each package <code>X<i>j</i></code> has two versions <code>X<i>j</i>:0</cod=
+e> and <code>X<i>j</i>:1</code>.
+As assumed above, <code>X<i>j</i>:0</code> and <code>X<i>j</i>:1</code> con=
+flict and cannot both be installed.
+<code>X<i>j</i>:1</code> being installed corresponds to <i>x</i><sub><i>j</=
+i></sub>=E2=80=89=3D=E2=80=891 in the original formula.
+
+</p><p>
+Package <code>C<i>i</i></code> has three versions numbered 0, 1, 2, each of=
+ which depends on a literal from the corresponding clause.
+For example, if <i>C</i><sub>5</sub> is (<i>x</i><sub>1</sub> =E2=88=A8 =C2=
+=AC=E2=80=89<i>x</i><sub>2</sub> =E2=88=A8 <i>x</i><sub>4</sub>), then <cod=
+e>C5:0</code> depends on <code>X1:1</code>, <code>C5:1</code> depends on <c=
+ode>X2:0</code>, and <code>C5:2</code> depends on <code>X4:1</code>.
+<code>C<i>i</i>:<i>k</i></code> being installed corresponds to <i>C</i><sub=
+><i>i</i></sub>'s <i>k</i>=E2=80=99th literal being true (and therefore <i>=
+C<sub>i</sub></i> being true) in the original formula.
+
+</p><p>
+Package <code>F</code> depends on <code>C1</code>, <code>C2</code>, ..., <c=
+ode>C<i>n</i></code>.
+<code>F</code> being installed implies that all the <code>C<i>i</i></code> =
+are installed, which corresponds to all the <i>C</i><sub><i>i</i></sub> bei=
+ng true and therefore to <i>F</i> being true.
+
+</p><p>
+If the package manager can find a way to install package <code>F</code>, th=
+en a satisfying assignment for the
+original formula can be read out from the install status of <code>X<i>j</i>=
+:1</code> for each variable <i>x</i><sub><i>j</i></sub>.
+Similarly, if the formula is satisfiable, the satisfying assignment gives o=
+ne way the package manager
+could successfully install <code>F</code>.
+Therefore, we've converted the 3-SAT instance into a corresponding VERSION =
+instance with the same answer,
+which establishes that 3-SAT can be solved using VERSION, so VERSION is NP-=
+hard.
+
+</p><p>
+Since VERSION is in NP and is NP-hard, VERSION is NP-complete.
+<a class=3D"anchor" href=3D"https://research.swtch.com/version-sat#implemen=
+tations"></a></p><h2 id=3D"implementations"><a class=3D"anchor" href=3D"htt=
+ps://research.swtch.com/version-sat#implementations">Implementations</a></h=
+2>
+
+
+<p>
+The assumptions above are quite minimal:
+packages have a list of dependencies,
+a package's dependencies can change with its own version to version,
+a package's dependencies can be restricted to specific versions of those de=
+pendencies,
+and it is possible for two versions of a package to conflict with each othe=
+r.
+That may be the bare minimum for a package manager to be useful.
+Some package managers might not allow a dependency to list a specific versi=
+on,
+instead requiring a range, but we can easily change the version requirement=
+s 0 and 1
+to =E2=89=A4=E2=80=890 and =E2=89=A5=E2=80=891.
+Some package managers might not assume that different versions of a package
+conflict by default, but it must be at least possible to specify such a con=
+flict:
+there can't be two <code>/bin/bash</code> on a Unix system, or two definiti=
+ons of <code>printf</code> built into a C program.
+
+</p><p>
+The assumptions are true of every package manager I have looked at:
+Debian's APT, RedHat's RPM, Rust's Cargo, Node's npmjs, Java's Maven, Haske=
+ll's Cabal, and more.
+The implication is that these package managers faces an NP-complete task.
+Each must choose between possibly taking a very long time
+to decide on an installation strategy or possibly reporting an installable
+package as uninstallable.
+(Of course, a given implementation may inadvertently do both.)
+
+</p><p>
+Knuth writes in <a href=3D"http://ptgmedia.pearsoncmg.com/images/9780134397=
+603/samplepages/9780134397603.pdf">Volume 4, Fascicle 6</a>:</p><blockquote=
+>
+
+<p>
+The story of satisfiability is the tale of a triumph of software engineerin=
+g,
+blended with rich doses of beautiful mathematics. Thanks to elegant new dat=
+a
+structures and other techniques, modern SAT solvers are able to deal routin=
+ely
+with practical problems that involve many thousands of variables, although =
+such
+problems were regarded as hopeless just a few years ago.</p></blockquote>
+
+<p>
+In practice, it does seem that modern package managers are moving toward us=
+ing SAT solvers:
+
+</p><p>
+<a href=3D"http://0install.net/"><b>0install</b></a> started with heuristic=
+s but <a href=3D"https://mail.mozilla.org/pipermail/rust-dev/2012-February/=
+001378.html">found it necessary</a> to switch to <a href=3D"http://0install=
+.net/solver.html">a SAT solver</a>.
+
+</p><p>
+<a href=3D"https://chef.io/"><b>Chef</b></a>, a systems integration framewo=
+rk, uses the <a href=3D"https://github.com/chef/dep-selector">dep-selector =
+Ruby bindings</a> for the <a href=3D"http://www.gecode.org/">Gecode constra=
+int solver</a>.
+
+</p><p>
+<a href=3D"https://pub.dartlang.org/"><b>Dart's pub</b></a> includes a <a h=
+ref=3D"https://github.com/dart-lang/pub/blob/master/lib/src/solver/backtrac=
+king_solver.dart">backtracking solver</a> that <a href=3D"https://github.co=
+m/dart-lang/pub/issues/912">often takes a long time</a>.
+
+</p><p>
+<a href=3D"https://wiki.debian.org/apt-get"><b>Debian's apt-get</b></a> use=
+s heuristics by default but can <a href=3D"http://www.dicosmo.org/MyOpinion=
+s/index.php?post/2014/10/30/139-saved-yet-another-time-by-an-external-solve=
+r-for-apt">invoke a SAT solver</a>
+and can
+<a href=3D"http://www.dicosmo.org/MyOpinions/index.php?post/2014/03/05/137-=
+user-preferences-for-dependency-solvers-a-short-survey-and-new-features-add=
+ed-in-the-latest-aspcud-solver">take user preferences into account</a>.
+The Debian Quality Assurance team also <a href=3D"http://www.dicosmo.org/My=
+Opinions/index.php?post/2014/05/21/138-static-analysis-of-software-componen=
+t-repositories-from-debian-to-opam">runs a solver</a> to identify uninstall=
+able packages in their repos.
+
+</p><p>
+<a href=3D"https://www.eclipse.org/"><b>Eclipse</b></a> uses the <a href=3D=
+"http://www.sat4j.org/">sat4j SAT solver</a> to <a href=3D"https://forge.ow=
+2.org/forum/forum.php?forum_id=3D1369">manage installation of its plugins</=
+a>.
+
+</p><p>
+<a href=3D"https://lwn.net/Articles/503581/"><b>Fedora's DNF</b></a> (=E2=
+=80=9CDandified yum=E2=80=9D) uses <a href=3D"https://fedoraproject.org/wik=
+i/Features/DNF#Detailed_Description">a SAT solver</a> in an experimental mo=
+de.
+
+</p><p>
+<a href=3D"https://github.com/freebsd/pkg"><b>FreeBSD's pkg</b></a>, also u=
+sed by DragonflyBSD, uses <a href=3D"https://github.com/freebsd/pkg/tree/ma=
+ster/external/picosat">the picosat SAT solver</a>.
+
+</p><p>
+<a href=3D"https://opam.ocaml.org/"><b>OCaml's OPAM</b></a> can <a href=3D"=
+https://opam.ocaml.org/doc/Specifying_Solver_Preferences.html">invoke a SAT=
+ solver locally or remotely over a network</a>. Like with Debian's apt-get,=
+ OPAM's solver can take user preferences into account,
+and the OPAM repos are scanned for uninstallable packages.
+
+</p><p>
+<a href=3D"https://www.opensuse.org/"><b>OpenSUSE</b></a>'s package manager=
+ uses <a href=3D"https://github.com/openSUSE/libsolv">libsolv</a>, =E2=80=
+=9Ca free package dependency solver using a satisfiability algorithm.=E2=80=
+=9D There is also OpenSUSE's zypper, which uses its own <a href=3D"https://=
+en.opensuse.org/openSUSE:Libzypp_satsolver">libzypp</a> SAT solver.
+
+</p><p>
+<a href=3D"https://www.continuum.io/anaconda-overview"><b>Python's Anaconda=
+</b></a> uses a <a href=3D"https://www.continuum.io/blog/developer/new-adva=
+nces-conda-0">SAT solver</a> but can <a href=3D"https://groups.google.com/a=
+/continuum.io/forum/#!topic/anaconda/CT7viK-fFDI">take a long time</a>.
+
+</p><p>
+<a href=3D"https://blog.rust-lang.org/2016/05/05/cargo-pillars.html"><b>Rus=
+t's Cargo</b></a> uses a <a href=3D"https://github.com/rust-lang/cargo/blob=
+/8b5aec111926d1d03d2da32dd494e0fff073f870/src/cargo/core/resolver/mod.rs#L4=
+26">basic backtracking solver</a>. It also allows multiple versions of a cr=
+ate to be linked into the final binary.
+
+</p><p>
+<a href=3D"https://docs.oracle.com/cd/E36784_01/html/E36856/docinfo.html#sc=
+rolltoc"><b>Solaris's pkg</b></a>, also used by Illumos and sometimes known=
+ as IPS, <a href=3D"https://blogs.oracle.com/barts/entry/satisfaction">uses=
+ the minisat SAT solver</a>.
+
+</p><p>
+<a href=3D"https://github.com/apple/swift-package-manager"><b>Swift's packa=
+ge manager</b></a> uses a <a href=3D"https://github.com/apple/swift-package=
+-manager/blob/master/Sources/PackageGraph/DependencyResolver.swift#L518">ba=
+sic backtracking solver</a>.
+
+</p><p>
+[I would like to add more package managers here. If you know details for on=
+e (or something here is wrong), please <a href=3D"mailto:rsc@swtch.com">ema=
+il me</a> or <a href=3D"https://twitter.com/_rsc">send a tweet</a>. Thanks.=
+]
+<a class=3D"anchor" href=3D"https://research.swtch.com/version-sat#alternat=
+ives"></a></p><h2 id=3D"alternatives"><a class=3D"anchor" href=3D"https://r=
+esearch.swtch.com/version-sat#alternatives">Alternatives?</a></h2>
+
+
+<p>
+How should we react to the fact that package version selection is NP-comple=
+te?
+One reaction is to embrace the complexity and be thankful that
+SAT solvers are as good as they are.
+Another reaction is to ask whether this can possibly be a good idea.
+Maybe we should not be building tools that require solving this problem.
+Maybe something has gone wrong in the way we develop software.
+
+</p><p>
+If package version selection is NP-complete, that means
+the search space of possible package combinations
+is too large and intricate for efficient systematic analysis;
+what about efficient systematic testing?
+If a search finds a conflict-free combination, why should we believe the co=
+mbination will work?
+The absence of a version conflict may indicate only that the combination is=
+ untested.
+If a search doesn't find a conflict-free combination, how can that failure
+be explained to a developer in a way that makes it clear
+what to do next?
+Software is hard enough to get right without admitting
+NP-complete problems into our software configuration decisions.
+Let's reexamine how we got here and how we might escape.
+
+</p><p>
+The proof above depends on these of assumptions, copied from above:
+</p><ol>
+<li>
+A package can list zero or more packages or specific package versions as de=
+pendencies.
+</li><li>
+To install a package, all its dependencies must be installed.
+</li><li>
+Each version of a package can have different dependencies.
+</li><li>
+Two different versions of a package cannot be installed simultaneously.</li=
+></ol>
+
+
+<p>
+The conventional wisdom, as I suggested above, is that these are roughly
+the =E2=80=9Cthe bare minimum for a package manager to be useful,=E2=80=9D
+but maybe we can find a way to reduce them after all.
+
+</p><p>
+One way to avoid NP-completeness is to attack assumption 1:
+what if, instead of allowing a dependency to list specific package versions=
+,
+a dependency can only specify a minimum version?
+Then there is a trivial algorithm for finding the packages to use:
+start with the newest version of what you want to install,
+and then get the newest version of all its dependencies,
+recursively.
+In the original diamond dependency at the beginning of this article,
+A needs B and C, and B and C need different versions of D.
+If B needs D 1.5 and C needs D 1.6, the build can use D 1.6 for both.
+If B doesn't work with D 1.6,
+then either the version of B we're considering is buggy or D 1.6 is buggy.
+The buggy version should be removed from circulation entirely,
+and then a new released version should fix the problem.
+Adding a conflict to the dependency graph instead
+is like documenting a bug instead of fixing it.
+
+</p><p>
+Another way to avoid NP-completeness is to attack assumption 4:
+what if two different versions of a package could be installed
+simultaneously?
+Then almost any search algorithm will find a combination of
+packages to build the program; it just might not be the
+smallest possible combination (that's still NP-complete).
+If B needs D 1.5 and C needs D 2.2, the build can include both
+packages in the final binary, treating them as distinct packages.
+I mentioned above that there can't be two definitions of <code>printf</code=
+> built into a C program,
+but languages with explicit module systems should have no
+problem including separate copies of D (under different fully-qualified nam=
+es) into a program.
+
+</p><p>
+Another way to avoid NP-completeness is to combine the previous two.
+As the examples already hint at,
+if packages follow <a href=3D"http://semver.org/">semantic versioning</a>,
+a package manager might automatically use the newest version
+of a dependency within a major version but then treat
+different major versions as different packages.
+
+</p><p>
+One rationale for such restrictions is that developers are likely not think=
+ing
+about the entire space of all possible package combinations when building
+or testing software. It would help for the developers and their tools to
+agree about how software is built.
+If any of these approaches can be made to work in practice,
+it could go a long way toward simplifying the operation
+and understandability of language package managers.
+<a class=3D"anchor" href=3D"https://research.swtch.com/version-sat#related"=
+></a></p><h2 id=3D"related"><a class=3D"anchor" href=3D"https://research.sw=
+tch.com/version-sat#related">Related Work</a></h2>
+
+
+<p>
+Proofs that Debian and RedHat package installation are both NP-complete are=
+ given in
+=E2=80=9C<a href=3D"https://hal.inria.fr/hal-00697463">EDOS deliverable WP2=
+-D2.1: Report on Formal Management of Software Dependencies</a>=E2=80=9D (2=
+005), pages 49-50.
+The difficult step in the reduction of 3-SAT to package installation
+is how to construct a disjunction.
+The EDOS proofs encode the disjunction using the package manager's
+ability to specify a list of alternatives for a single dependency,
+either directly (in Debian) or using =E2=80=9Cprovides=E2=80=9D directives =
+(in RedHat).
+For example, these systems allow a pseudo-package <code>text-editor</code>
+to be defined that is considered installed when any of the real packages
+<code>ed</code>, <code>vi</code>, or <code>acme</code> is installed.
+
+</p><p>
+The dependency specifications for a language package manager
+like Rust's Cargo are dramatically simpler than those for Debian and RedHat=
+,
+and so the EDOS proofs do not apply.
+One might therefore hope that language package managers face
+an easier (not NP-complete) job.
+The new proof above dashes that hope.
+(One way to view the proof above is that it simulates the =E2=80=9Cprovides=
+=E2=80=9D directive
+in the last example by defining a <code>text-editor</code> package with thr=
+ee versions,
+one of which depends on <code>ed</code>, one on <code>vi</code>, and one on=
+ <code>acme</code>.)
+
+</p><p>
+By encoding the disjunction in the changing dependencies
+of different versions of a package, the new proof works without modificatio=
+n
+for both Debian's and RedHat's package managers but also applies to essenti=
+ally
+any foreseeable operating system or language package manager.
+I suspect that most language package manager authors assumed
+the problem they faced was NP-complete, but I've been unable to find
+prior written proofs of that fact.
+
+</p><p>
+A few dependency systems use constraint solvers instead of SAT solvers,
+but the underlying problem is <a href=3D"https://en.wikipedia.org/wiki/Scha=
+efer%27s_dichotomy_theorem">still NP-complete</a>.
+
+</p><p>
+In 2008, Daniel Burrows wrote a blog post about <a href=3D"http://web.archi=
+ve.org/web/20160326062818/http://algebraicthunk.net/~dburrows/blog/entry/pa=
+ckage-management-sudoku/">using dpkg to solve Sudoku problems</a>.
+
+</p><p>
+Thanks to Sam Boyer for pointing me at the EDOS report
+and for his excellent <a href=3D"https://medium.com/@sdboyer/so-you-want-to=
+-write-a-package-manager-4ae9c17d9527">overview of package management</a>.
+
+</p><p>
+Roberto Di Cosmo has written a number of followups to the EDOS report,
+<a href=3D"http://www.dicosmo.org/Publications/publi-by-topic.html">listed =
+here</a>, in particular,
+=E2=80=9C<a href=3D"http://www.dicosmo.org/Articles/2012-AbateDiCosmoTreine=
+nZacchiroli-Jss.pdf">Dependency solving: a separate concern in component ev=
+olution management</a>,=E2=80=9D
+which contains an updated proof.
+That line of research applies SAT solvers but also works to take user prefe=
+rences into account.
+
+</p><p>
+Another related line of work is =E2=80=9C<a href=3D"https://cseweb.ucsd.edu=
+/~lerner/papers/opium.pdf">OPIUM: Optimal Package Install/Uninstall Manager=
+</a>=E2=80=9D by Tucker et al., ICSE 2007. OPIUM was the <a href=3D"http://=
+0install.net/solver.html#idp172528">starting point for 0install's solver</a=
+>.
+
+</p><p>
+Jaroslav Tulach discovered the <a href=3D"http://wiki.apidesign.org/wiki/Li=
+braryReExportIsNPComplete">same proof as above in 2009</a>.
+Thanks to HN reader <a href=3D"https://news.ycombinator.com/item?id=3D13167=
+981">edwintorok for the link</a>.
+
+</p><p>
+The <a href=3D"http://lambda-the-ultimate.org/node/3588">discussion of Tula=
+ch's proof on LtU</a> mentions Daniel Burrows's 2005 paper =E2=80=9C<a href=
+=3D"https://people.debian.org/~dburrows/model.pdf">Modelling and Resolving =
+Software Dependencies</a>,=E2=80=9D but that paper's proof is more like the=
+ EDOS proof than Tulach's proof / the proof above.
+
+</p><p>
+Many readers sent additional links to references and to package managers wi=
+th SAT solvers. Thanks to all.
+      </p></div>
+     =20
+     =20
+    </div>
+
+   =20
+
+
+
+   =20
+   =20
+ =20
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body></html>
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-50c00595-be5a-4c30-98e5-744428ed042a@mhtml.blink
+
+@charset "utf-8";
+
+.tk-caflisch-script-pro { font-family: caflisch-script-pro, sans-serif; }
+
+.tk-minion-pro, body { font-family: minion-pro, serif; }
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-e94aa08c-b04b-47b1-8502-7427081b6745@mhtml.blink
+
+@charset "utf-8";
+
+@font-face { font-family: caflisch-script-pro; src: url("https://use.typeki=
+t.com/af/ecee20/000000000000000000012d94/27/l?subset_id=3D2&fvd=3Dn4&v=3D3"=
+) format("woff2"), url("https://use.typekit.com/af/ecee20/00000000000000000=
+0012d94/27/d?subset_id=3D2&fvd=3Dn4&v=3D3") format("woff"), url("https://us=
+e.typekit.com/af/ecee20/000000000000000000012d94/27/a?subset_id=3D2&fvd=3Dn=
+4&v=3D3") format("opentype"); font-weight: 400; font-style: normal; }
+
+@font-face { font-family: minion-pro; src: url("https://use.typekit.com/af/=
+a23875/0000000000000000000151d1/27/l?primer=3D7cdcb44be4a7db8877ffa5c0007b8=
+dd865b3bbc383831fe2ea177f62257a9191&fvd=3Dn7&v=3D3") format("woff2"), url("=
+https://use.typekit.com/af/a23875/0000000000000000000151d1/27/d?primer=3D7c=
+dcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=3Dn7&v=
+=3D3") format("woff"), url("https://use.typekit.com/af/a23875/0000000000000=
+000000151d1/27/a?primer=3D7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2e=
+a177f62257a9191&fvd=3Dn7&v=3D3") format("opentype"); font-weight: 700; font=
+-style: normal; }
+
+@font-face { font-family: minion-pro; src: url("https://use.typekit.com/af/=
+f89b05/0000000000000000000151d2/27/l?primer=3D7cdcb44be4a7db8877ffa5c0007b8=
+dd865b3bbc383831fe2ea177f62257a9191&fvd=3Di7&v=3D3") format("woff2"), url("=
+https://use.typekit.com/af/f89b05/0000000000000000000151d2/27/d?primer=3D7c=
+dcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=3Di7&v=
+=3D3") format("woff"), url("https://use.typekit.com/af/f89b05/0000000000000=
+000000151d2/27/a?primer=3D7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2e=
+a177f62257a9191&fvd=3Di7&v=3D3") format("opentype"); font-weight: 700; font=
+-style: italic; }
+
+@font-face { font-family: minion-pro; src: url("https://use.typekit.com/af/=
+fee4f4/0000000000000000000151d3/27/l?primer=3D7cdcb44be4a7db8877ffa5c0007b8=
+dd865b3bbc383831fe2ea177f62257a9191&fvd=3Di4&v=3D3") format("woff2"), url("=
+https://use.typekit.com/af/fee4f4/0000000000000000000151d3/27/d?primer=3D7c=
+dcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=3Di4&v=
+=3D3") format("woff"), url("https://use.typekit.com/af/fee4f4/0000000000000=
+000000151d3/27/a?primer=3D7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2e=
+a177f62257a9191&fvd=3Di4&v=3D3") format("opentype"); font-weight: 400; font=
+-style: italic; }
+
+@font-face { font-family: minion-pro; src: url("https://use.typekit.com/af/=
+05f29b/0000000000000000000151d6/27/l?primer=3D7cdcb44be4a7db8877ffa5c0007b8=
+dd865b3bbc383831fe2ea177f62257a9191&fvd=3Dn4&v=3D3") format("woff2"), url("=
+https://use.typekit.com/af/05f29b/0000000000000000000151d6/27/d?primer=3D7c=
+dcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=3Dn4&v=
+=3D3") format("woff"), url("https://use.typekit.com/af/05f29b/0000000000000=
+000000151d6/27/a?primer=3D7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2e=
+a177f62257a9191&fvd=3Dn4&v=3D3") format("opentype"); font-weight: 400; font=
+-style: normal; }
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-fd1b5cbd-d33f-4603-b70e-18e2abcc1b88@mhtml.blink
+
+@charset "utf-8";
+
+body { padding: 0px; margin: 0px; font-size: 100%; font-family: "Minion Pro=
+"; }
+
+@media print {
+  img { break-inside: avoid; }
+  div.nosplit { break-inside: avoid; }
+}
+
+img.center { display: block; margin: 0px auto; }
+
+.pad { padding-top: 1em; padding-bottom: 1em; }
+
+a.anchor, a.back, a.footnote { color: black !important; text-decoration: no=
+ne !important; }
+
+a.back { font-size: 50%; }
+
+@media print {
+  a.back { display: none; }
+}
+
+.header { height: 1.25em; background-color: rgb(221, 255, 255); margin: 0px=
+; padding: 0.1em 0.1em 0.2em; border-top: 1px solid black; border-bottom: 1=
+px solid rgb(136, 255, 255); }
+
+.header h3 { margin: 0px; padding: 0px 2em; display: inline-block; font-sty=
+le: italic; font-size: 90%; }
+
+.rss { float: right; padding-top: 0.2em; padding-right: 2em; display: none;=
+ }
+
+.toc { margin-top: 2em; }
+
+.toc-title { font-family: caflisch-script-pro; font-size: 300%; line-height=
+: 50%; }
+
+.toc-subtitle { display: block; margin-bottom: 1em; font-size: 83%; }
+
+@media only screen and (max-width: 550px) {
+  .toc-subtitle { display: none; }
+}
+
+.header h3 a { color: black; }
+
+.header h4 { margin: 0px; padding: 0px; display: inline-block; font-weight:=
+ normal; font-size: 83%; }
+
+@media only screen and (max-width: 550px) {
+  .header h4 { display: none; }
+}
+
+.main { padding: 0px 2em; }
+
+@media only screen and (max-width: 479px) {
+  .article { font-size: 120%; }
+}
+
+.article h1 { text-align: center; font-size: 200%; }
+
+.copyright { font-size: 83%; }
+
+.subtitle { font-size: 65%; }
+
+.normal { font-size: medium; font-weight: normal; }
+
+.when { text-align: center; font-size: 100%; margin: 0px; padding: 0px; }
+
+.when p { margin: 0px; padding: 0px; }
+
+.article h2 { font-size: 125%; padding-top: 0.25em; }
+
+.article h3 { font-size: 100%; }
+
+pre { margin-left: 4em; margin-right: 4em; }
+
+pre, code { font-family: Inconsolata, monospace; font-size: 100%; }
+
+.footer { margin-top: 10px; font-size: 83%; font-family: sans-serif; }
+
+.comments { margin-top: 2em; background-color: rgb(255, 255, 238); border-t=
+op: 1px solid rgb(170, 170, 68); border-left: 1px solid rgb(170, 170, 68); =
+border-right: 1px solid rgb(170, 170, 68); }
+
+.comments-header { padding: 0px 5px; }
+
+.comments-header p { padding: 0px; margin: 3px 0px 0px; }
+
+.comments-body { padding: 5px; }
+
+#plus-comments { border-bottom: 1px dotted rgb(204, 204, 204); }
+
+.plus-comment { width: 100%; font-size: 14px; border-top: 1px dotted rgb(20=
+4, 204, 204); }
+
+.me { background-color: rgb(238, 238, 204); }
+
+.plus-comment ul { margin: 0px; padding: 0px; list-style: none; width: 100%=
+; display: inline-block; }
+
+.comment-when { color: rgb(153, 153, 153); width: auto; padding: 0px 5px; }
+
+.old { font-size: 83%; }
+
+.plus-comment ul li { display: inline-block; vertical-align: top; margin-to=
+p: 5px; margin-bottom: 5px; padding: 0px; }
+
+.plus-icon { width: 45px; }
+
+.plus-img { float: left; margin: 4px; width: 32px; height: 32px; }
+
+.plus-comment p { margin: 0px; padding: 0px; }
+
+.plus-clear { clear: left; }
+
+.toc-when { font-size: 83%; color: rgb(153, 153, 153); }
+
+.toc { list-style: none; }
+
+.toc li { margin-bottom: 0.5em; }
+
+.toc-head { font-size: 117%; margin-bottom: 1em !important; }
+
+.toc-summary { margin-left: 2em; }
+
+.favorite { font-weight: bold; }
+
+.article p, .article ol { line-height: 144%; }
+
+sup, sub { vertical-align: baseline; position: relative; font-size: 83%; }
+
+sup { bottom: 1ex; }
+
+sub { top: 0.8ex; }
+
+.main { position: relative; margin: 0px auto; padding: 0px; width: 900px; }
+
+@media only screen and (max-width: 959px) and (min-width: 768px) {
+  .main { width: 708px; }
+}
+
+@media only screen and (max-width: 767px) and (min-width: 640px) {
+  .main { width: 580px; }
+}
+
+@media only screen and (max-width: 639px) and (min-width: 480px) {
+  .main { width: 420px; }
+}
+
+@media only screen and (max-width: 479px) {
+  .main { width: 300px; }
+}
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-c13bf651-75c9-4ba3-91c9-41831ece616f@mhtml.blink
+
+@charset "utf-8";
+
+sub { font-size: 70%; }
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://fonts.googleapis.com/css?family=Inconsolata:400,700
+
+@charset "utf-8";
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 400=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyxq15IDhunJ_o.woff2") format("woff2=
+"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U=
++1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 400=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyx615IDhunJ_o.woff2") format("woff2=
+"); unicode-range: U+100-24F, U+259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20=
+AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 400=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyya15IDhunA.woff2") format("woff2")=
+; unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, =
+U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF=
+, U+FFFD; }
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 700=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyxq15IDhunJ_o.woff2") format("woff2=
+"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U=
++1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 700=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyx615IDhunJ_o.woff2") format("woff2=
+"); unicode-range: U+100-24F, U+259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20=
+AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: Inconsolata; font-style: normal; font-weight: 700=
+; font-stretch: 100%; src: url("https://fonts.gstatic.com/s/inconsolata/v20=
+/QlddNThLqRwH-OJ1UHjlKENVzkWGVkL3GZQmAwLyya15IDhunA.woff2") format("woff2")=
+; unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, =
+U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF=
+, U+FFFD; }
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://research.swtch.com/feed-icon-14x14.png
+
+iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAABGdBTUEAAK/INwWK6QAAABl0RVh0
+U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJDSURBVHjajJJNSBRhGMd/887MzrQxRSLb
+FuYhoUhEKsMo8paHUKFLdBDrUIdunvq4RdClOq8Hb0FBSAVCUhFR1CGD/MrIJYqs1kLUXd382N35
+6plZFOrUO/MMz/vO83+e93n+f+1zF+kQBoOQNLBJg0CTj7z/rvWjGbEOIwKp9O7WkhtQc/wMWrlI
+kP8Kc1lMS8eyFHpkpo5SgWCCVO7Z5JARhuz1Qg29fh87u6/9VWL1/SPc4Qy6n8c0FehiXin6dcCQ
+aylDMhqGz8ydS2hKkmxNkWxowWnuBLHK6G2C8X6UJkBlxUmNqLYyNbzF74QLDrgFgh9LLE0NsPKx
+jW1Hz2EdPIubsOFdH2HgbwAlC4S19dT13o+3pS+vcSfvUcq9YnbwA6muW9hNpym/FWBxfh0CZkKG
+kPBZeJFhcWQAu6EN52QGZ/8prEKW+cdXq0039UiLXhUYzdjebOJQQI30UXp6mZn+Dtam32Afu0iy
+rgUvN0r+ZQbr8HncSpUVJfwRhBWC0hyGV8CxXBL5SWYf9sYBidYLIG2V87/ifVjTWAX6AlxeK2C0
+X8e58hOr/Qa2XJ3iLMWxB1h72tHs7bgryzHAN2o2gJorTrLxRHVazd0o4TXiyV2Yjs90uzauGvvp
+pmqcLjwmbZ3V7BO2HOrBnbgrQRqWUgTZ5+Snx4WeKfzCCrmb3axODKNH+vvUyWjqyK4DiKQ0eXSp
+FsgVvLJQWpH+xSpr4otg/HI0TR/t97cxTUS+QxIMRTLi/9ZYJPI/AgwAoc3W7ZrqR2IAAAAASUVO
+RK5CYII=
+
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8----
+Content-Type: image/svg+xml
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://research.swtch.com/version-sat.svg
+
+<?xml version=3D"1.0" encoding=3D"UTF-8" standalone=3D"no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/=
+SVG/1.1/DTD/svg11.dtd">
+<svg xmlns=3D"http://www.w3.org/2000/svg" xmlns:xl=3D"http://www.w3.org/199=
+9/xlink" version=3D"1.1" viewBox=3D"-1 -1 296 165" width=3D"296pt" height=
+=3D"165pt" xmlns:dc=3D"http://purl.org/dc/elements/1.1/">
+  <metadata> Produced by OmniGraffle 7.2.1=20
+    <dc:date>2016-12-09 03:02:12 +0000</dc:date>
+  </metadata>
+  <defs>
+    <font-face font-family=3D"Arial" font-size=3D"12" panose-1=3D"2 11 6 4 =
+2 2 2 2 2 4" units-per-em=3D"1000" underline-position=3D"-105.95703" underl=
+ine-thickness=3D"73.24219" slope=3D"0" x-height=3D"518.5547" cap-height=3D"=
+716.3086" ascent=3D"905.2734" descent=3D"-211.91406" font-weight=3D"500">
+      <font-face-src>
+        <font-face-name name=3D"ArialMT"/>
+      </font-face-src>
+    </font-face>
+    <marker orient=3D"auto" overflow=3D"visible" markerUnits=3D"strokeWidth=
+" id=3D"FilledArrow_Marker" viewBox=3D"-1 -4 10 8" markerWidth=3D"10" marke=
+rHeight=3D"8" color=3D"black">
+      <g>
+        <path d=3D"M 8 0 L 0 -3 L 0 3 Z" fill=3D"currentColor" stroke=3D"cu=
+rrentColor" stroke-width=3D"1"/>
+      </g>
+    </marker>
+    <marker orient=3D"auto" overflow=3D"visible" markerUnits=3D"strokeWidth=
+" id=3D"FilledArrow_Marker_2" viewBox=3D"-1 -4 10 8" markerWidth=3D"10" mar=
+kerHeight=3D"8" color=3D"#0432ff">
+      <g>
+        <path d=3D"M 8 0 L 0 -3 L 0 3 Z" fill=3D"currentColor" stroke=3D"cu=
+rrentColor" stroke-width=3D"1"/>
+      </g>
+    </marker>
+    <marker orient=3D"auto" overflow=3D"visible" markerUnits=3D"strokeWidth=
+" id=3D"FilledArrow_Marker_3" viewBox=3D"-1 -4 10 8" markerWidth=3D"10" mar=
+kerHeight=3D"8" color=3D"#ff2600">
+      <g>
+        <path d=3D"M 8 0 L 0 -3 L 0 3 Z" fill=3D"currentColor" stroke=3D"cu=
+rrentColor" stroke-width=3D"1"/>
+      </g>
+    </marker>
+    <marker orient=3D"auto" overflow=3D"visible" markerUnits=3D"strokeWidth=
+" id=3D"FilledArrow_Marker_4" viewBox=3D"-1 -4 10 8" markerWidth=3D"10" mar=
+kerHeight=3D"8" color=3D"#ff2600">
+      <g>
+        <path d=3D"M 8 0 L 0 -3 L 0 3 Z" fill=3D"currentColor" stroke=3D"cu=
+rrentColor" stroke-width=3D"1"/>
+      </g>
+    </marker>
+    <font-face font-family=3D"Helvetica" font-size=3D"8" units-per-em=3D"10=
+00" underline-position=3D"-75.68359" underline-thickness=3D"49.316406" slop=
+e=3D"0" x-height=3D"522.9492" cap-height=3D"717.28516" ascent=3D"770.0195" =
+descent=3D"-229.98047" font-weight=3D"500">
+      <font-face-src>
+        <font-face-name name=3D"Helvetica"/>
+      </font-face-src>
+    </font-face>
+  </defs>
+  <g stroke=3D"none" stroke-opacity=3D"1" stroke-dasharray=3D"none" fill=3D=
+"none" fill-opacity=3D"1">
+    <title>Canvas 1</title>
+    <g>
+      <title>Layer 1</title>
+      <rect x=3D"78" y=3D"0" width=3D"76" height=3D"23.5" stroke=3D"black" =
+stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <text transform=3D"translate(83 4.553711)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" f=
+ill=3D"black" x=3D"28.998047" y=3D"11" textLength=3D"8.003906">A</tspan>
+      </text>
+      <rect x=3D"0" y=3D"48" width=3D"76" height=3D"23.5" stroke=3D"black" =
+stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <text transform=3D"translate(5 52.55371)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" x=
+=3D"28.998047" y=3D"11" textLength=3D"8.003906">B</tspan>
+      </text>
+      <rect x=3D"156" y=3D"46" width=3D"76" height=3D"23.5" stroke=3D"black=
+" stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <text transform=3D"translate(161 50.55371)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" x=
+=3D"28.666992" y=3D"11" textLength=3D"8.666016">C</tspan>
+      </text>
+      <line x1=3D"135.92391" y1=3D"23.5" x2=3D"165.54856" y2=3D"40.97095" m=
+arker-end=3D"url(#FilledArrow_Marker)" stroke=3D"black" stroke-linecap=3D"r=
+ound" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <line x1=3D"96.90625" y1=3D"23.5" x2=3D"65.52517" y2=3D"42.811435" ma=
+rker-end=3D"url(#FilledArrow_Marker)" stroke=3D"black" stroke-linecap=3D"ro=
+und" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <rect x=3D"48" y=3D"117" width=3D"136" height=3D"46.5" stroke=3D"blac=
+k" stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <text transform=3D"translate(53 144.60742)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" x=
+=3D"58.66699" y=3D"11" textLength=3D"8.666016">D</tspan>
+      </text>
+      <rect x=3D"59.5" y=3D"128.5" width=3D"47.5" height=3D"23.5" stroke=3D=
+"#a5a5a5" stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=
+=3D"1"/>
+      <text transform=3D"translate(64.5 133.05371)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" f=
+ill=3D"black" x=3D"2.4111328" y=3D"11" textLength=3D"32.677734">vers 1</tsp=
+an>
+      </text>
+      <rect x=3D"125" y=3D"128.5" width=3D"47.5" height=3D"23.5" stroke=3D"=
+#a5a5a5" stroke-linecap=3D"round" stroke-linejoin=3D"round" stroke-width=3D=
+"1"/>
+      <text transform=3D"translate(130 133.05371)" fill=3D"black">
+        <tspan font-family=3D"Arial" font-size=3D"12" font-weight=3D"500" x=
+=3D"2.4111328" y=3D"11" textLength=3D"32.677734">vers 2</tspan>
+      </text>
+      <line x1=3D"44.604814" y1=3D"71.5" x2=3D"71.794145" y2=3D"119.86997" =
+marker-end=3D"url(#FilledArrow_Marker_2)" stroke=3D"#0432ff" stroke-linecap=
+=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <line x1=3D"187.5553" y1=3D"69.5" x2=3D"159.9556" y2=3D"119.81991" ma=
+rker-end=3D"url(#FilledArrow_Marker_2)" stroke=3D"#0432ff" stroke-linecap=
+=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1"/>
+      <line x1=3D"54.16537" y1=3D"71.5" x2=3D"124.57658" y2=3D"122.67925" m=
+arker-end=3D"url(#FilledArrow_Marker_3)" stroke=3D"#ff2600" stroke-linecap=
+=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1" stroke-dasharray=3D=
+"1,3"/>
+      <line x1=3D"178.22652" y1=3D"69.5" x2=3D"106.9628" y2=3D"122.58584" m=
+arker-end=3D"url(#FilledArrow_Marker_4)" stroke=3D"#ff2600" stroke-linecap=
+=3D"round" stroke-linejoin=3D"round" stroke-width=3D"1" stroke-dasharray=3D=
+"1,3"/>
+      <line x1=3D"199.5" y1=3D"130" x2=3D"275.95" y2=3D"130" marker-end=3D"=
+url(#FilledArrow_Marker_4)" stroke=3D"#ff2600" stroke-linecap=3D"round" str=
+oke-linejoin=3D"round" stroke-width=3D".75" stroke-dasharray=3D"1,3"/>
+      <text transform=3D"translate(204.5 120)" fill=3D"#ff2600">
+        <tspan font-family=3D"Helvetica" font-size=3D"8" font-weight=3D"500=
+" fill=3D"#ff2600" x=3D"14.542969" y=3D"8" textLength=3D"44.91406">incompat=
+ible</tspan>
+      </text>
+      <line x1=3D"199.5" y1=3D"150" x2=3D"275.95" y2=3D"150" marker-end=3D"=
+url(#FilledArrow_Marker_2)" stroke=3D"#0432ff" stroke-linecap=3D"round" str=
+oke-linejoin=3D"round" stroke-width=3D".75"/>
+      <text transform=3D"translate(204.5 140)" fill=3D"#0432ff">
+        <tspan font-family=3D"Helvetica" font-size=3D"8" font-weight=3D"500=
+" fill=3D"#0432ff" x=3D"17.65625" y=3D"8" textLength=3D"38.6875">compatible=
+</tspan>
+      </text>
+    </g>
+  </g>
+</svg>=0A
+------MultipartBoundary--zsIQuG1yEZN99wfLRej16UrgV67d3gOuAsvzITG6O8------

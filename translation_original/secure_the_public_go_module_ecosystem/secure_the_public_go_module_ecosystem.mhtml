@@ -1,0 +1,1451 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md
+Subject: Proposal: Secure the Public Go Module Ecosystem
+Date: Mon, 17 Aug 2020 02:32:58 -0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----"
+
+
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/html
+Content-ID: <frame-F8D771DCD9ABE62466140CEC6C5EF17E@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md
+
+<!DOCTYPE html><html lang=3D"en"><head><meta http-equiv=3D"Content-Type" co=
+ntent=3D"text/html; charset=3DUTF-8"><title>Proposal: Secure the Public Go =
+Module Ecosystem</title><link rel=3D"stylesheet" type=3D"text/css" href=3D"=
+https://go.googlesource.com/+static/base.FgwOs7Bvh5E6-lzR-xJuUQ.cache.css">=
+<link rel=3D"stylesheet" type=3D"text/css" href=3D"https://go.googlesource.=
+com/+static/doc.aizEIcp0qpW8JIXIrCB9UQ.cache.css"><link rel=3D"stylesheet" =
+type=3D"text/css" href=3D"https://go.googlesource.com/+static/prettify/pret=
+tify.AOMOBqJIPcDq491E2ExAAw.cache.css"><!-- default customHeadTagPart --></=
+head><body class=3D"Site"><header class=3D"Site-header "><div class=3D"Head=
+er"><div class=3D"Header-title"></div></div></header><div class=3D"Site-con=
+tent Site-Content--markdown"><div class=3D"Container"><div class=3D"doc"><h=
+1><a class=3D"h" name=3D"Proposal_Secure-the-Public-Go-Module-Ecosystem" hr=
+ef=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#P=
+roposal_Secure-the-Public-Go-Module-Ecosystem"><span></span></a><a class=3D=
+"h" name=3D"proposal_secure-the-public-go-module-ecosystem" href=3D"https:/=
+/go.googlesource.com/proposal/+/master/design/25530-sumdb.md#proposal_secur=
+e-the-public-go-module-ecosystem"><span></span></a>Proposal: Secure the Pub=
+lic Go Module Ecosystem</h1><p>Russ Cox<br>Filippo Valsorda</p><p>Last upda=
+ted: April 24, 2019.</p><p><a href=3D"https://golang.org/design/25530-sumdb=
+">golang.org/design/25530-sumdb</a></p><p>Discussion at <a href=3D"https://=
+golang.org/issue/25530">golang.org/issue/25530</a>.</p><h2><a class=3D"h" n=
+ame=3D"Abstract" href=3D"https://go.googlesource.com/proposal/+/master/desi=
+gn/25530-sumdb.md#Abstract"><span></span></a><a class=3D"h" name=3D"abstrac=
+t" href=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb=
+.md#abstract"><span></span></a>Abstract</h2><p>We propose to secure the pub=
+lic Go module ecosystem by introducing a new server, the Go checksum databa=
+se, which serves what is in effect a <code class=3D"code">go.sum</code> fil=
+e listing all publicly-available Go modules. The <code class=3D"code">go</c=
+ode> command will use this service to fill in gaps in its own local <code c=
+lass=3D"code">go.sum</code> files, such as during <code class=3D"code">go g=
+et -u</code>. This ensures that unexpected code changes cannot be introduce=
+d when first adding a dependency to a module or when upgrading a dependency=
+.</p><p>The original name for the Go checksum database was =E2=80=9Cthe Go =
+notary,=E2=80=9D but we have stopped using that name to avoid confusion wit=
+h the CNCF Notary project, itself written in Go, not to mention the Apple N=
+otary.</p><h2><a class=3D"h" name=3D"Background" href=3D"https://go.googles=
+ource.com/proposal/+/master/design/25530-sumdb.md#Background"><span></span>=
+</a><a class=3D"h" name=3D"background" href=3D"https://go.googlesource.com/=
+proposal/+/master/design/25530-sumdb.md#background"><span></span></a>Backgr=
+ound</h2><p>When you run <code class=3D"code">go</code> <code class=3D"code=
+">get</code> <code class=3D"code">rsc.io/quote@v1.5.2</code>, <code class=
+=3D"code">go</code> <code class=3D"code">get</code> first fetches <code cla=
+ss=3D"code">https://rsc.io/quote?go-get=3D1</code> and looks for <code clas=
+s=3D"code">&lt;meta&gt;</code> tags. It finds</p><pre class=3D"code">&lt;me=
+ta name=3D"go-import"
+      content=3D"rsc.io/quote git https://github.com/rsc/quote"&gt;
+</pre><p>which tells it the code is in a Git repository on <code class=3D"c=
+ode">github.com</code>. Next it runs <code class=3D"code">git clone https:/=
+/github.com/rsc/quote</code> to fetch the Git repository and then extracts =
+the file tree from the <code class=3D"code">v1.5.2</code> tag, producing th=
+e actual module archive.</p><p>Historically, <code class=3D"code">go</code>=
+ <code class=3D"code">get</code> has always simply assumed that it was down=
+loading the right code. An attacker able to intercept the connection to <co=
+de class=3D"code">rsc.io</code> or <code class=3D"code">github.com</code> (=
+or an attacker able to break into one of those systems, or a malicious modu=
+le author) would be able to cause <code class=3D"code">go</code> <code clas=
+s=3D"code">get</code> to download different code tomorrow, and <code class=
+=3D"code">go</code> <code class=3D"code">get</code> would not notice.</p><p=
+>There are <a href=3D"https://research.swtch.com/deps">many challenges in u=
+sing software dependencies safely</a>, and much more vetting should typical=
+ly be done before taking on a new dependency, but no amount of vetting is w=
+orth anything if the code you download and vet today differs from the code =
+you or a collaborator downloads tomorrow for the =E2=80=9Csame=E2=80=9D mod=
+ule version. We must be able to authenticate whether a particular download =
+is correct.</p><p>For our purposes, =E2=80=9Ccorrect=E2=80=9D for a particu=
+lar module version download is defined as the same code everyone else downl=
+oads. This definition ensures reproducibility of builds and makes vetting o=
+f specific module versions meaningful, without needing to attribute specifi=
+c archives to specific authors, and without introducing new potential point=
+s of compromise like per-author keys. (Also, even the author of a module sh=
+ould not be able to change the bits associated with a specific version from=
+ one day to the next.)</p><p>Being able to authenticate a particular module=
+ version download effectively moves code hosting servers like <code class=
+=3D"code">rsc.io</code> and <code class=3D"code">github.com</code> out of t=
+he trusted computing base of the Go module ecosystem. With module authentic=
+ation, those servers could cause availability problems by not serving a mod=
+ule version anymore, but they cannot substitute different code. The introdu=
+ction of Go module proxies (see <code class=3D"code">go help goproxy</code>=
+) introduces yet another way for an attacker to intercept module downloads;=
+ module authentication eliminates the need to trust those proxies as well, =
+moving them outside <a href=3D"https://www.microsoft.com/en-us/research/pub=
+lication/authentication-in-distributed-systems-theory-and-practice/">truste=
+d computing base</a>.</p><p>See the Go blog post =E2=80=9C<a href=3D"https:=
+//blog.golang.org/modules2019">Go Modules in 2019</a>=E2=80=9D for addition=
+al background.</p><h3><a class=3D"h" name=3D"Module-Authentication-with" hr=
+ef=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#M=
+odule-Authentication-with"><span></span></a><a class=3D"h" name=3D"module-a=
+uthentication-with" href=3D"https://go.googlesource.com/proposal/+/master/d=
+esign/25530-sumdb.md#module-authentication-with"><span></span></a>Module Au=
+thentication with <code class=3D"code">go.sum</code></h3><p>Go 1.11=E2=80=
+=99s preview of Go modules introduced the <code class=3D"code">go.sum</code=
+> file, which is maintained automatically by the <code class=3D"code">go</c=
+ode> command in the root of a module tree and contains cryptographic checks=
+ums for the content of each dependency of that module. If a module=E2=80=99=
+s source file tree is obtained unmodified, then the <code class=3D"code">go=
+.sum</code> file allows authenticating all dependencies needed for a build =
+of that module. It ensures that tomorrow=E2=80=99s builds will use the same=
+ exact code for dependencies that today=E2=80=99s builds did. Tomorrow=E2=
+=80=99s downloads are authenticated by <code class=3D"code">go.sum</code>.<=
+/p><p>On the other hand, today=E2=80=99s downloads=E2=80=94the ones that ad=
+d or update dependencies in the first place=E2=80=94are not authenticated. =
+When a dependency is first added to a module, or when a dependency is upgra=
+ded to a newer version, there is no entry for it in <code class=3D"code">go=
+.sum</code>, and the <code class=3D"code">go</code> command today blindly t=
+rusts that it downloads the correct code. Then it records the hash of that =
+code into <code class=3D"code">go.sum</code> to ensure that code doesn=E2=
+=80=99t change tomorrow. But that doesn=E2=80=99t help the initial download=
+. The model is similar to SSH=E2=80=99s =E2=80=9C<a href=3D"https://en.wiki=
+pedia.org/wiki/Trust_on_first_use">trust on first use</a>,=E2=80=9D and whi=
+le that approach is an improvement over =E2=80=9Ctrust every time,=E2=80=9D=
+ it=E2=80=99s still not ideal, especially since developers typically downlo=
+ad new module versions far more often than they connect to new, unknown SSH=
+ servers.</p><p>We are concerned primarily with authenticating downloads of=
+ publicly-available module versions. We assume that the private servers hos=
+ting private module source code are already within the trusted computing ba=
+se of the developers using that code. In contrast, a developer who wants to=
+ use <code class=3D"code">rsc.io/quote</code> should not be required to tru=
+st that <code class=3D"code">rsc.io</code> is properly secured. This trust =
+becomes particularly problematic when summed over all dependencies.</p><p>W=
+hat we need is an easily-accessed <code class=3D"code">go.sum</code> file l=
+isting every publicly-available module version. But we don=E2=80=99t want t=
+o blindly trust a downloaded <code class=3D"code">go.sum</code> file, since=
+ that would become the next attractive target for an attacker.</p><h3><a cl=
+ass=3D"h" name=3D"Transparent-Logs" href=3D"https://go.googlesource.com/pro=
+posal/+/master/design/25530-sumdb.md#Transparent-Logs"><span></span></a><a =
+class=3D"h" name=3D"transparent-logs" href=3D"https://go.googlesource.com/p=
+roposal/+/master/design/25530-sumdb.md#transparent-logs"><span></span></a>T=
+ransparent Logs</h3><p>The <a href=3D"https://www.certificate-transparency.=
+org/">Certificate Transparency</a> project is based on a data structure cal=
+led a <em>transparent log</em>. The transparent log is hosted on a server a=
+nd made accessible to clients for random access, but clients are still able=
+ to verify that a particular log record really is in the log and also that =
+the server never removes any log record from the log. Separately, third-par=
+ty auditors can iterate over the log checking that the entries themselves a=
+re accurate. These two properties combined mean that a client can use recor=
+ds from the log, confident that those records will remain available in the =
+log for auditors to double-check and report invalid or suspicious entries. =
+Clients and auditors can also compare observations to ensure that the serve=
+r is showing the same data to everyone involved.</p><p>That is, the log ser=
+ver is not trusted to store the log properly, nor is it trusted to put the =
+right records into the log. Instead, clients and auditors interact skeptica=
+lly with the server, able to verify for themselves in each interaction that=
+ the server really is behaving correctly.</p><p>For details about the data =
+structure, see Russ Cox=E2=80=99s blog post, =E2=80=9C<a href=3D"https://re=
+search.swtch.com/tlog">Transparent Logs for Skeptical Clients</a>.=E2=80=9D=
+ For a high-level overview of Certificate Transparency along with additiona=
+l motivation and context, see Ben Laurie's ACM Queue article, =E2=80=9C<a h=
+ref=3D"https://queue.acm.org/detail.cfm?id=3D2668154">Certificate Transpare=
+ncy: Public, verifiable, append-only logs</a>.=E2=80=9D</p><p>The use of a =
+transparent log for module hashes aligns with a broader trend of using tran=
+sparent logs to enable detection of misbehavior by partially trusted system=
+s, what the Trillian team calls =E2=80=9C<a href=3D"https://github.com/goog=
+le/trillian/#trillian-general-transparency">General Transparency</a>.=E2=80=
+=9D</p><h2><a class=3D"h" name=3D"Proposal" href=3D"https://go.googlesource=
+.com/proposal/+/master/design/25530-sumdb.md#Proposal"><span></span></a><a =
+class=3D"h" name=3D"proposal" href=3D"https://go.googlesource.com/proposal/=
++/master/design/25530-sumdb.md#proposal"><span></span></a>Proposal</h2><p>W=
+e propose to publish the <code class=3D"code">go.sum</code> lines for all p=
+ublicly-available Go modules in a transparent log, served by a new server c=
+alled the Go checksum database. When a publicly-available module is not yet=
+ listed in the main module=E2=80=99s <code class=3D"code">go.sum</code> fil=
+e, the <code class=3D"code">go</code> command will fetch the relevant <code=
+ class=3D"code">go.sum</code> lines from the checksum database instead of t=
+rusting the initial download to be correct.</p><h3><a class=3D"h" name=3D"C=
+hecksum-Database" href=3D"https://go.googlesource.com/proposal/+/master/des=
+ign/25530-sumdb.md#Checksum-Database"><span></span></a><a class=3D"h" name=
+=3D"checksum-database" href=3D"https://go.googlesource.com/proposal/+/maste=
+r/design/25530-sumdb.md#checksum-database"><span></span></a>Checksum Databa=
+se</h3><p>The Go checksum database will run at <code class=3D"code">https:/=
+/sum.golang.org/</code> and serve the following endpoints:</p><ul><li><p><c=
+ode class=3D"code">/latest</code> will serve a signed tree size and hash fo=
+r the latest log.</p></li><li><p><code class=3D"code">/lookup/M@V</code> wi=
+ll serve the log record number for the entry about module M version V, foll=
+owed by the data for the record (that is, the <code class=3D"code">go.sum</=
+code> lines for module M version V) and a signed tree hash for a tree that =
+contains the record. If the module version is not yet recorded in the log, =
+the notary will try to fetch it before replying. Note that the data should =
+never be used without first authenticating it against the signed tree hash =
+and authenticating the signed tree hash against the client's timeline of si=
+gned tree hashes.</p></li><li><p><code class=3D"code">/tile/H/L/K[.p/W]</co=
+de> will serve a <a href=3D"https://research.swtch.com/tlog#serving_tiles">=
+log tile</a>. The optional <code class=3D"code">.p/W</code> suffix indicate=
+s a partial log tile with only <code class=3D"code">W</code> hashes. Client=
+s must fall back to fetching the full tile if a partial tile is not found. =
+The record data for the leaf hashes in <code class=3D"code">/tile/H/0/K[.p/=
+W]</code> are served as <code class=3D"code">/tile/H/data/K[.p/W]</code> (w=
+ith a literal <code class=3D"code">data</code> path element).</p></li></ul>=
+<p>Clients are expected to use <code class=3D"code">/lookup</code> and <cod=
+e class=3D"code">/tile/H/L/...</code> during normal operations, while audit=
+ors will want to use <code class=3D"code">/latest</code> and <code class=3D=
+"code">/tile/H/data/...</code>. A special <code class=3D"code">go</code> co=
+mmand may also fetch <code class=3D"code">/latest</code> to force incorpora=
+tion of that signed tree head into the local timeline.</p><h3><a class=3D"h=
+" name=3D"Proxying-a-Checksum-Database" href=3D"https://go.googlesource.com=
+/proposal/+/master/design/25530-sumdb.md#Proxying-a-Checksum-Database"><spa=
+n></span></a><a class=3D"h" name=3D"proxying-a-checksum-database" href=3D"h=
+ttps://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#proxying=
+-a-checksum-database"><span></span></a>Proxying a Checksum Database</h3><p>=
+A module proxy can also proxy requests to the checksum database. The genera=
+l proxy URL form is <code class=3D"code">&lt;proxyURL&gt;/sumdb/&lt;databas=
+eURL&gt;</code>. If <code class=3D"code">GOPROXY=3Dhttps://proxy.site</code=
+> then the latest signed tree would be fetched using <code class=3D"code">h=
+ttps://proxy.site/sumdb/sum.golang.org/latest</code>. Including the full da=
+tabase URL allows a transition to a new database log, such as <code class=
+=3D"code">sum.golang.org/v2</code>.</p><p>Before accessing any checksum dat=
+abase URL using a proxy, the proxy client should first fetch <code class=3D=
+"code">&lt;proxyURL&gt;/sumdb/&lt;sumdb-name&gt;/supported</code>. If that =
+request returns a successful (HTTP 200) response, then the proxy supports p=
+roxying checksum database requests. In that case, the client should use the=
+ proxied access method only, never falling back to a direct connection to t=
+he database. If the <code class=3D"code">/sumdb/&lt;sumdb-name&gt;/supporte=
+d</code> check fails with a =E2=80=9Cnot found=E2=80=9D (HTTP 404) or =E2=
+=80=9Cgone=E2=80=9D (HTTP 410) response, the proxy is unwilling to proxy th=
+e checksum database, and the client should connect directly to the database=
+. Any other response is treated as the database being unavailable.</p><p>A =
+corporate proxy may want to ensure that clients never make any direct datab=
+ase connections (for example, for privacy; see the =E2=80=9CRationale=E2=80=
+=9D section below). The optional <code class=3D"code">/sumdb/supported</cod=
+e> endpoint, along with proxying actual database requests, lets such a prox=
+y ensure that a <code class=3D"code">go</code> command using the proxy neve=
+r makes a direct connection to sum.golang.org. But simpler proxies may wish=
+ to focus on serving only modules and not checksum data=E2=80=94in particul=
+ar, module-only proxies can be served from entirely static file systems, wi=
+th no special infrastructure at all. Such proxies can respond with an HTTP =
+404 or HTTP 410 to the <code class=3D"code">/sumdb/supported</code> endpoin=
+t, so that clients will connect to the database directly.</p><h3><a class=
+=3D"h" name=3D"command-client" href=3D"https://go.googlesource.com/proposal=
+/+/master/design/25530-sumdb.md#command-client"><span></span></a><code clas=
+s=3D"code">go</code> command client</h3><p>The <code class=3D"code">go</cod=
+e> command is the primary consumer of the database=E2=80=99s published log.=
+ The <code class=3D"code">go</code> command will <a href=3D"https://researc=
+h.swtch.com/tlog#verifying_a_log">verify the log</a> as it uses it, ensurin=
+g that every record it reads is actually in the log and that no observed lo=
+g ever drops a record from an earlier observed log.</p><p>The <code class=
+=3D"code">go</code> command will refer to <code class=3D"code">$GOSUMDB</co=
+de> to find the name and public key of the Go checksum database. That varia=
+ble will default to the <code class=3D"code">sum.golang.org</code> server.<=
+/p><p>The <code class=3D"code">go</code> command will cache the latest sign=
+ed tree size and tree hash in <code class=3D"code">$GOPATH/pkg/sumdb/&lt;su=
+mdb-name&gt;/latest</code>. It will cache lookup results and tiles in <code=
+ class=3D"code">$GOPATH/pkg/mod/download/cache/sumdb/&lt;sumdb-name&gt;/loo=
+kup/path@version</code> and <code class=3D"code">$GOPATH/pkg/mod/download/c=
+ache/sumdb/&lt;sumdb-name&gt;/tile/H/L/K[.W]</code>. (More generally, <code=
+ class=3D"code">https://&lt;sumdb-URL&gt;</code> is cached in <code class=
+=3D"code">$GOPATH/pkg/mod/download/cache/sumdb/&lt;sumdb-URL&gt;</code>.) T=
+his way, <code class=3D"code">go clean -modcache</code> deletes cached look=
+up results and tiles but not the latest signed tree hash, which should be p=
+reserved for detection of timeline inconsistency. No <code class=3D"code">g=
+o</code> command (only a manual <code class=3D"code">rm -rf $GOPATH/pkg</co=
+de>) will wipe out the memory of the latest observed tree size and hash. If=
+ the <code class=3D"code">go</code> command ever does observe a pair of inc=
+onsistent signed tree sizes and hashes, it will complain loudly on standard=
+ error and fail the build.</p><p>The <code class=3D"code">go</code> command=
+ must be configured to know which modules are publicly available and theref=
+ore can be looked up in the checksum database, versus those that are closed=
+ source and must not be looked up, especially since that would transmit pot=
+entially private import paths over the network to the database <code class=
+=3D"code">/lookup</code> endpoint. A few new environment variables control =
+this configuration. (See the <a href=3D"https://golang.org/design/30411-env=
+"><code class=3D"code">go env -w</code> proposal</a>, now available in the =
+Go 1.13 development branch, for a way to manage these variables more easily=
+.)</p><ul><li><p><code class=3D"code">GOPROXY=3Dhttps://proxy.site/path</co=
+de> sets the Go module proxy to use, as before.</p></li><li><p><code class=
+=3D"code">GONOPROXY=3Dprefix1,prefix2,prefix3</code> sets a list of module =
+path prefixes, possibly containing globs, that should not be proxied. For e=
+xample:</p><pre class=3D"code">GONOPROXY=3D*.corp.google.com,rsc.io/private
+</pre><p>will bypass the proxy for the modules foo.corp.google.com, foo.cor=
+p.google.com/bar, rsc.io/private, and rsc.io/private/bar, though not rsc.io=
+/privateer (the patterns are path prefixes, not string prefixes).</p></li><=
+li><p><code class=3D"code">GOSUMDB=3D&lt;sumdb-key&gt;</code> sets the Go c=
+hecksum database to use, where <code class=3D"code">&lt;sumdb-key&gt;</code=
+> is a verifier key as defined in <a href=3D"https://godoc.org/golang.org/x=
+/mod/sumdb/note#hdr-Verifying_Notes">package note</a>.</p></li><li><p><code=
+ class=3D"code">GONOSUMDB=3Dprefix1,prefix2,prefix3</code> sets a list of m=
+odule path prefixes, again possibly containing globs, that should not be lo=
+oked up using the database.</p><p>We expect that corporate environments may=
+ fetch all modules, public and private, through an internal proxy; <code cl=
+ass=3D"code">GONOSUMDB</code> allows them to disable checksum database look=
+ups for internal modules while still verifying public modules. Therefore, <=
+code class=3D"code">GONOSUMDB</code> must not imply <code class=3D"code">GO=
+NOPROXY</code>.</p><p>We also expect that other users may prefer to connect=
+ directly to source origins but still want verification of open source modu=
+les or proxying of the database itself; <code class=3D"code">GONOPROXY</cod=
+e> allows them to arrange that and therefore must not imply <code class=3D"=
+code">GONOSUMDB</code>.</p></li></ul><p>The database not being able to repo=
+rt <code class=3D"code">go.sum</code> lines for a module version is a hard =
+failure: any private modules must be explicitly listed in <code class=3D"co=
+de">$GONOSUMDB</code>. (Otherwise an attacker could block traffic to the da=
+tabase and make all module versions appear to be genuine.) The database can=
+ be disabled entirely with <code class=3D"code">GONOSUMDB=3D*</code>. The c=
+ommand <code class=3D"code">go get -insecure</code> will report but not sto=
+p after database lookup failures or database mismatches.</p><h2><a class=3D=
+"h" name=3D"Rationale" href=3D"https://go.googlesource.com/proposal/+/maste=
+r/design/25530-sumdb.md#Rationale"><span></span></a><a class=3D"h" name=3D"=
+rationale" href=3D"https://go.googlesource.com/proposal/+/master/design/255=
+30-sumdb.md#rationale"><span></span></a>Rationale</h2><p>The motivation for=
+ authenticating module downloads is covered in the background section above=
+. Note that we want to authenticate modules obtained both from direct conne=
+ctions to code-hosting servers and from module proxies.</p><p>Two topics ar=
+e worth further discussion: first, having a single database server for the =
+entire Go ecosystem, and second, the privacy implications of a database ser=
+ver.</p><h3><a class=3D"h" name=3D"Security" href=3D"https://go.googlesourc=
+e.com/proposal/+/master/design/25530-sumdb.md#Security"><span></span></a><a=
+ class=3D"h" name=3D"security" href=3D"https://go.googlesource.com/proposal=
+/+/master/design/25530-sumdb.md#security"><span></span></a>Security</h3><p>=
+The Go team at Google will run the Go checksum database as a service to the=
+ Go ecosystem, similar to running <code class=3D"code">godoc.org</code> and=
+ <code class=3D"code">golang.org</code>. It is important that the service b=
+e secure. Our thinking about the security design of the database has evolve=
+d over time, and it is useful to outline the evolution that led to the curr=
+ent design.</p><p>The simplest possible approach, which we never seriously =
+considered, is to have one trusted server that issues a signed certificate =
+for each module version. The drawback of this approach is that a compromise=
+d server can be used to sign a certificate for a compromised module version=
+, and then that compromised module version and certificate can be served to=
+ a target victim without easy detection.</p><p>One way to address this weak=
+ness is strength in numbers: have, say, N=3D3 or N=3D5 organizations run in=
+dependent servers, gather certificates from all of them, and accept a modul=
+e version as valid when, say, (N+1)/2 certificates agree. The two drawbacks=
+ of this approach are that it is significantly more expensive and still pro=
+vides no detection of actual attacks. The payoff from targeted replacement =
+of source code could be high enough to justify silently compromising (N+1)/=
+2 notaries and then making very selective use of the certificates. So our f=
+ocus turned to detection of compromise.</p><p>Requiring a checksum database=
+ to log a <code class=3D"code">go.sum</code> entry in a <a href=3D"https://=
+research.swtch.com/tlog">transparent log</a> before accepting it does raise=
+ the likelihood of detection. If the compromised <code class=3D"code">go.su=
+m</code> entry is stored in the actual log, an auditor can find it. And if =
+the compromised <code class=3D"code">go.sum</code> entry is served in a for=
+ked, victim-specific log, the server must always serve that forked log to t=
+he victim, and only to the victim, or else the <code class=3D"code">go</cod=
+e> command's consistency checks will fail loudly, and with enough informati=
+on to cryptographically prove the compromise of the server.</p><p>An ecosys=
+tem with multiple proxies run by different organizations makes a successful=
+ =E2=80=9Cforked log=E2=80=9D attack even harder: the attacker would have t=
+o not only compromise the database, it would also have to compromise each p=
+ossible proxy the victim might use and arrange to identify the victim well =
+enough to always serve the forked log to the victim and to never serve it t=
+o any non-victim.</p><p>The serving of the transparent log in tile form hel=
+ps caching and proxying but also makes victim identification that much hard=
+er. When using Certificate Transparency's proof endpoints, the proof reques=
+ts might be arranged to carry enough material to identify a victim, for exa=
+mple by only ever serving an even log sizes to the victim and odd log sizes=
+ to others and then adjusting the log-size-specific proofs accordingly. But=
+ complete tile fetches expose no information about the cached log size, mak=
+ing it that much harder to serve modified tiles only to the victim.</p><p>W=
+e hope that proxies run by various organizations in the Go community will a=
+lso serve as auditors and double-check Go checksum database log entries as =
+part of their ordinary operation. (Another useful service that could be ena=
+bled by the database is a notification service to alert authors about new v=
+ersions of their own modules.)</p><p>As described earlier, users who want t=
+o ensure their own compromise requires compromising multiple organizations =
+can use Google=E2=80=98s checksum database and a different organization=E2=
+=80=99s proxy to access it.</p><p>Generalizing that approach, the usual way=
+ to further improve detection of fork attacks is to add gossip, so that dif=
+ferent users can check whether they are seeing different logs. In effect, t=
+he proxy protocol already supports this, so that any available proxy that p=
+roxies the database can be a gossip source. If we add a  <code class=3D"cod=
+e">go fetch-latest-chccksum-log-from-goproxy</code> (obviously not the fina=
+l name) and</p><pre class=3D"code">GOPROXY=3Dhttps://other.proxy/ go fetch-=
+latest-checksum-log-from-goproxy
+</pre><p>succeeds, then the client and other.proxy are seeing the same log.=
+</p><p>Compared to the original scenario of a single checksum database with=
+ no transparent log, the use of a single transparent log and the ability to=
+ proxy the database and gossip improves detection of attacks so much that t=
+here is little incremental security benefit to adding the complexity of mul=
+tiple notaries. At some point in the future, it might make sense for the Go=
+ ecosystem to support using multiple databases, but to begin with we have o=
+pted for the simpler (but still reasonably secure) ecosystem design of a si=
+ngle database.</p><h3><a class=3D"h" name=3D"Privacy" href=3D"https://go.go=
+oglesource.com/proposal/+/master/design/25530-sumdb.md#Privacy"><span></spa=
+n></a><a class=3D"h" name=3D"privacy" href=3D"https://go.googlesource.com/p=
+roposal/+/master/design/25530-sumdb.md#privacy"><span></span></a>Privacy</h=
+3><p>Contacting the Go checksum database to authenticate a new dependency r=
+equires sending the module path and version to the database server.</p><p>T=
+he database server will of course need to publish a privacy policy, and it =
+should be written as clearly as the <a href=3D"https://developers.google.co=
+m/speed/public-dns/privacy">Google Public DNS Privacy Policy</a> and be sur=
+e to include information about log retention windows. That policy is still =
+under development. But the privacy policy only matters for data the databas=
+e receives. The design of the database protocol and usage is meant to minim=
+ize what the <code class=3D"code">go</code> command even sends.</p><p>There=
+ are two main privacy concerns: exposing the text of private modules paths =
+to the database, and exposing usage information for public modules to the d=
+atabas.</p><h4><a class=3D"h" name=3D"Private-Module-Paths" href=3D"https:/=
+/go.googlesource.com/proposal/+/master/design/25530-sumdb.md#Private-Module=
+-Paths"><span></span></a><a class=3D"h" name=3D"private-module-paths" href=
+=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#pri=
+vate-module-paths"><span></span></a>Private Module Paths</h4><p>The first m=
+ain privacy concern is that a misconfigured <code class=3D"code">go</code> =
+command could send the text of a private module path (for example, <code cl=
+ass=3D"code">secret-machine.rsc.io/private/secret-plan</code>) to the datab=
+ase. The database will try to resolve the module, triggering a DNS lookup f=
+or <code class=3D"code">secret-machine.rsc.io</code> and, if that resolves,=
+ an HTTPS fetch for the longer URL. Even if the database then discards that=
+ path immediately upon failure, it has still been sent over the network.</p=
+><p>Such misconfiguration must not go unnoticed. For this reason (and also =
+to avoid downgrade attacks), if the database cannot return information abou=
+t a module, the download fails loudly and the <code class=3D"code">go</code=
+> command stops. This ensures both that all public modules are in fact auth=
+enticated and also that any misconfiguration must be corrected (by setting =
+<code class=3D"code">$GONOSUMDB</code> to avoid the database for those priv=
+ate modules) in order to achieve a successful build. This way, the frequenc=
+y of misconfiguration-induced database lookups should be minimized. Misconf=
+igurations fail; they will be noticed and fixed.</p><p>One possibility to f=
+urther reduce exposure of private module path text is to provide additional=
+ ways to set <code class=3D"code">$GONOSUMDB</code>, although it is not cle=
+ar what those should be. A top-level module's source code repository is an =
+attractive place to want to store configuration such as <code class=3D"code=
+">$GONOSUMDB</code> and <code class=3D"code">$GOPROXY</code>, but then that=
+ configuration changes depending on which version of the repo is checked ou=
+t, which would cause interesting behavior when testing old versions, whethe=
+r by hand or using tools like <code class=3D"code">git bisect</code>.</p><p=
+>(The nice thing about environment variables is that most corporate compute=
+r management systems already provide ways to preset environment variables.)=
+</p><h4><a class=3D"h" name=3D"Private-Module-SHA256s" href=3D"https://go.g=
+ooglesource.com/proposal/+/master/design/25530-sumdb.md#Private-Module-SHA2=
+56s"><span></span></a><a class=3D"h" name=3D"private-module-sha256s" href=
+=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#pri=
+vate-module-sha256s"><span></span></a>Private Module SHA256s</h4><p>Another=
+ possibility to reduce exposure is to support and use by default an alterna=
+te lookup <code class=3D"code">/lookup/SHA256(module)@version</code>, which=
+ sends the SHA256 hash of the module path instead of the module path instea=
+d. If the database was already aware of that module path, it would recogniz=
+e the SHA256 and perform the lookup, even potentially fetching a new versio=
+n of the module. If a misconfigured <code class=3D"code">go</code> command =
+sends the SHA256 of a private module path, that is far less information.</p=
+><p>The SHA256 scheme does require, however, that the first use of a public=
+ module be accompanied by some operation that sends its module path text to=
+ the database, so that the database can update its inverse-SHA256 index. Th=
+at operation=E2=80=94for now, let's call it <code class=3D"code">go notify =
+&lt;modulepath&gt;</code>=E2=80=94would need to be run just once ever acros=
+s the whole Go ecosystem for each module path. Most likely the author would=
+ do it, perhaps as part of the still-hypothetical <code class=3D"code">go r=
+elease</code> command, or else the first user of the module would need to d=
+o it (perhaps thinking carefully about being the first-ever user of the mod=
+ule!).</p><p>A modification of the SHA256 scheme might be to send a truncat=
+ed hash, designed to produce <a href=3D"https://en.wikipedia.org/wiki/K-ano=
+nymity">K-anonymity</a>, but this would cause significant expense: if the d=
+atabase identified K public modules with the truncated hash, it would have =
+to look up the given version tag for all K of them before returning an answ=
+er. This seems needlessly expensive and of little practical benefit. (An at=
+tacker might even create a long list of module paths that collide with a po=
+pular module, just to slow down requests.)</p><p>The SHA256 + <code class=
+=3D"code">go notify</code> scheme is not part of this proposal today, but w=
+e are considering adding it, with full hashes, not truncated ones.</p><h4><=
+a class=3D"h" name=3D"Public-Module-Usage-Information" href=3D"https://go.g=
+ooglesource.com/proposal/+/master/design/25530-sumdb.md#Public-Module-Usage=
+-Information"><span></span></a><a class=3D"h" name=3D"public-module-usage-i=
+nformation" href=3D"https://go.googlesource.com/proposal/+/master/design/25=
+530-sumdb.md#public-module-usage-information"><span></span></a>Public Modul=
+e Usage Information</h4><p>The second main privacy concern is that even dev=
+elopers who use only public modules would expose information about their mo=
+dule usage habits by requesting new <code class=3D"code">go.sum</code> line=
+s from the database.</p><p>Remember that the <code class=3D"code">go</code>=
+ command only contacts the database in order to find new lines to add to <c=
+ode class=3D"code">go.sum</code>. When <code class=3D"code">go.sum</code> i=
+s up-to-date, as it is during ordinary development, the database is never c=
+ontacted. That is, the database is only involved at all when adding a new d=
+ependency or changing the version of an existing one. That significantly re=
+duces the amount of usage information being sent to the database in the fir=
+st place.</p><p>Note also that even <code class=3D"code">go get -u</code> d=
+oes not request information about every dependency from the database: it on=
+ly requests information about dependencies with updates available.</p><p>Th=
+e <code class=3D"code">go</code> command will also cache database lookup re=
+sults (reauthenticating them against cached tiles at each use), so that usi=
+ng a single computer to upgrade the version of a particular dependency used=
+ by N different modules will result in only one database lookup, not N. Tha=
+t further reduces the strength of any usage signal.</p><p>One possible way =
+to even further reduce the usage signal observable by the database might be=
+ to use a truncated hash for K-anonymity, as described in the previous sect=
+ion, but the efficiency problems described earlier still apply. Also, even =
+if any particular fetch downloaded information for K different module paths=
+, the likely-very-lopsided popularity distribution might make it easy to gu=
+ess which module path a typical client was really looking for, especially c=
+ombined with version information. Truncated hashes appear to cost more than=
+ the benefit they would bring.</p><p>The complete solution for not exposing=
+ either private module path text or public module usage information is to u=
+s a proxy or a bulk download.</p><h4><a class=3D"h" name=3D"Privacy-by-Prox=
+y" href=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb=
+.md#Privacy-by-Proxy"><span></span></a><a class=3D"h" name=3D"privacy-by-pr=
+oxy" href=3D"https://go.googlesource.com/proposal/+/master/design/25530-sum=
+db.md#privacy-by-proxy"><span></span></a>Privacy by Proxy</h4><p>A complete=
+ solution for database privacy concerns is to for developers to access the =
+database only through a proxy, such as a local Athens instance or JFrog Art=
+ifactory instance, assuming those proxies add support for proxying and cach=
+ing the Go database service endpoints.</p><p>The proxy can be configured wi=
+th a list of private module patterns, so that even requests from a misconfi=
+gured <code class=3D"code">go</code> command never not make it past the pro=
+xy. The database endpoints are designed for cacheability, so that a proxy c=
+an avoid making any request more than once. Requests for new versions of mo=
+dules would still need to be relayed to the database.</p><p>We anticipate t=
+hat there will be many proxies available for use in the Go ecosystem. Part =
+of the motivation for the Go checksum database is to allow the use of any a=
+vailable proxy to download modules, without any reduction in security. Deve=
+lopers can then use any proxy they are comfortable using, or run their own.=
+</p><h4><a class=3D"h" name=3D"Privacy-by-Bulk-Download" href=3D"https://go=
+.googlesource.com/proposal/+/master/design/25530-sumdb.md#Privacy-by-Bulk-D=
+ownload"><span></span></a><a class=3D"h" name=3D"privacy-by-bulk-download" =
+href=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md=
+#privacy-by-bulk-download"><span></span></a>Privacy by Bulk Download</h4><p=
+>What little usage signal leaks from a proxy that aggressively caches datab=
+ase queries can be removed entirely by instead downloading the entire check=
+sum database and answering requests using the local copy. We estimate that =
+the Go ecosystem has around 3 million module versions. At an estimated foot=
+print of 200 bytes per module version, a much larger, complete checksum dat=
+abase of even 100 million module versions would still only be 20 GB. Bandwi=
+dth can be exchanged for complete anonymity by downloading the full databas=
+e once and thereafter updating it incrementally (easy, since it is append-o=
+nly). Any queries can be answered using only the local copy, ensuring that =
+neither private module paths nor public module usage is exposed. The cost o=
+f this approach is the need for a clients to download the entire database d=
+espite only needing an ever-smaller fraction of it. (Today, assuming only a=
+ 3-million-entry database, a module with even 100 dependencies would be dow=
+nloading 30,000 times more database than it actually needs. As the Go ecosy=
+stem grows, so too does the overhead factor.)</p><p>Downloading the entire =
+database might be a good strategy for a corporate proxy, however.</p><h4><a=
+ class=3D"h" name=3D"Privacy-in-CI_CD-Systems" href=3D"https://go.googlesou=
+rce.com/proposal/+/master/design/25530-sumdb.md#Privacy-in-CI_CD-Systems"><=
+span></span></a><a class=3D"h" name=3D"privacy-in-ci_cd-systems" href=3D"ht=
+tps://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#privacy-i=
+n-ci_cd-systems"><span></span></a>Privacy in CI/CD Systems</h4><p>A questio=
+n was raised about privacy of database operations especially in CI/CD syste=
+ms. We expect that a CI/CD system would <em>never</em> contact the database=
+.</p><p>First, in typical usage, you only push code to a CI/CD system after=
+ first at least building (and hopefully also testing!) any changes locally.=
+ Building any changes locally will update <code class=3D"code">go.mod</code=
+> and <code class=3D"code">go.sum</code> as needed, and then the <code clas=
+s=3D"code">go.sum</code> pushed to the CI/CD system will be up-to-date. The=
+ database is only involved when adding to <code class=3D"code">go.sum</code=
+>.</p><p>Second, module-aware CI/CD systems should already be using <code c=
+lass=3D"code">-mod=3Dreadonly</code>, to fail on out-of-date <code class=3D=
+"code">go.mod</code> files instead of silently updating them. We will ensur=
+e that <code class=3D"code">-mod=3Dreadonly</code> also fails on out-of-dat=
+e <code class=3D"code">go.sum</code> files if it does not already (<a href=
+=3D"https://golang.org/issue/30667">#30667</a>).</p><h2><a class=3D"h" name=
+=3D"Compatibility" href=3D"https://go.googlesource.com/proposal/+/master/de=
+sign/25530-sumdb.md#Compatibility"><span></span></a><a class=3D"h" name=3D"=
+compatibility" href=3D"https://go.googlesource.com/proposal/+/master/design=
+/25530-sumdb.md#compatibility"><span></span></a>Compatibility</h2><p>The in=
+troduction of the checksum database does not have any compatibility concern=
+s at the command or language level. However, proxies that serve modified co=
+pies of public modules will be incompatible with the new checks and stop be=
+ing usable. This is by design: such proxies are indistinguishable from man-=
+in-the-middle attacks.</p><h2><a class=3D"h" name=3D"Implementation" href=
+=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#Imp=
+lementation"><span></span></a><a class=3D"h" name=3D"implementation" href=
+=3D"https://go.googlesource.com/proposal/+/master/design/25530-sumdb.md#imp=
+lementation"><span></span></a>Implementation</h2><p>The Go team at Google i=
+s working on a production implementation of both a Go module proxy and the =
+Go checksum database, as we described in the blog post =E2=80=9C<a href=3D"=
+https://blog.golang.org/modules2019">Go Modules in 2019</a>.=E2=80=9D</p><p=
+>We will publish a checksum database client as part of the <code class=3D"c=
+ode">go</code> command, as well as an example database implementation. We i=
+ntend to ship support for the checksum database, enabled by default, in Go =
+1.13.</p><p>Russ Cox will lead the <code class=3D"code">go</code> command i=
+ntegration and has posted a <a href=3D"https://go-review.googlesource.com/q=
+/f:notary">stack of changes in golang.org/x/exp/notary</a>.</p></div></div>=
+</div><!-- default customFooter --><footer class=3D"Site-footer"><div class=
+=3D"Footer"><span class=3D"Footer-poweredBy">Powered by <a href=3D"https://=
+gerrit.googlesource.com/gitiles/">Gitiles</a>| <a href=3D"https://policies.=
+google.com/privacy">Privacy</a></span><div class=3D"Footer-links"></div></d=
+iv></footer><st-div id=3D"__selection-translator__"> <st-div class=3D"__st-=
+box__" style=3D"display: none; position: fixed; z-index: 99999; left: 0px; =
+top: 0px; transform: translateX(0px) translateY(0px);"> <st-header> <st-spa=
+n class=3D"st-icon-pin" title=3D"=E5=9B=BA=E5=AE=9A"></st-span> <st-span cl=
+ass=3D"st-icon-down-open" title=3D"=E5=B1=95=E5=BC=80"></st-span> <st-span =
+class=3D"st-icon-cog" title=3D"=E8=AE=BE=E7=BD=AE"></st-span> </st-header> =
+<st-div class=3D"__query-form__" style=3D"display: none;"> <st-div> <textar=
+ea placeholder=3D"=E8=BE=93=E5=85=A5=E8=A6=81=E7=BF=BB=E8=AF=91=E7=9A=84=E5=
+=8F=A5=E5=AD=90=E6=88=96=E5=8D=95=E8=AF=8D"></textarea> </st-div> <st-div> =
+<select> <option value=3D"">=E8=87=AA=E5=8A=A8=E5=88=A4=E6=96=AD</option> <=
+option value=3D"zh">=E4=B8=AD=E6=96=87</option><option value=3D"zh-CN">=E4=
+=B8=AD=E6=96=87(=E7=AE=80=E4=BD=93)</option><option value=3D"zh-HK">=E4=B8=
+=AD=E6=96=87(=E9=A6=99=E6=B8=AF)</option><option value=3D"zh-TW">=E4=B8=AD=
+=E6=96=87(=E7=B9=81=E4=BD=93)</option><option value=3D"en">=E8=8B=B1=E8=AF=
+=AD</option><option value=3D"ja">=E6=97=A5=E8=AF=AD</option><option value=
+=3D"ko">=E6=9C=9D=E9=B2=9C=E8=AF=AD</option><option value=3D"de">=E5=BE=B7=
+=E8=AF=AD</option><option value=3D"fr">=E6=B3=95=E8=AF=AD</option><option v=
+alue=3D"ru">=E4=BF=84=E8=AF=AD</option><option value=3D"th">=E6=B3=B0=E8=AF=
+=AD</option><option value=3D"af">=E5=8D=97=E9=9D=9E=E8=AF=AD</option><optio=
+n value=3D"ar">=E9=98=BF=E6=8B=89=E4=BC=AF=E8=AF=AD</option><option value=
+=3D"az">=E9=98=BF=E5=A1=9E=E6=8B=9C=E7=96=86=E8=AF=AD</option><option value=
+=3D"be">=E6=AF=94=E5=88=A9=E6=97=B6=E8=AF=AD</option><option value=3D"bg">=
+=E4=BF=9D=E5=8A=A0=E5=88=A9=E4=BA=9A=E8=AF=AD</option><option value=3D"ca">=
+=E5=8A=A0=E6=B3=B0=E9=9A=86=E8=AF=AD</option><option value=3D"cs">=E6=8D=B7=
+=E5=85=8B=E8=AF=AD</option><option value=3D"cy">=E5=A8=81=E5=B0=94=E5=A3=AB=
+=E8=AF=AD</option><option value=3D"da">=E4=B8=B9=E9=BA=A6=E8=AF=AD</option>=
+<option value=3D"dv">=E7=AC=AC=E7=BB=B4=E5=9F=83=E8=AF=AD</option><option v=
+alue=3D"el">=E5=B8=8C=E8=85=8A=E8=AF=AD</option><option value=3D"eo">=E4=B8=
+=96=E7=95=8C=E8=AF=AD</option><option value=3D"es">=E8=A5=BF=E7=8F=AD=E7=89=
+=99=E8=AF=AD</option><option value=3D"et">=E7=88=B1=E6=B2=99=E5=B0=BC=E4=BA=
+=9A=E8=AF=AD</option><option value=3D"eu">=E5=B7=B4=E5=A3=AB=E5=85=8B=E8=AF=
+=AD</option><option value=3D"fa">=E6=B3=95=E6=96=AF=E8=AF=AD</option><optio=
+n value=3D"fi">=E8=8A=AC=E5=85=B0=E8=AF=AD</option><option value=3D"fo">=E6=
+=B3=95=E7=BD=97=E8=AF=AD</option><option value=3D"gl">=E5=8A=A0=E9=87=8C=E8=
+=A5=BF=E4=BA=9A=E8=AF=AD</option><option value=3D"gu">=E5=8F=A4=E5=90=89=E6=
+=8B=89=E7=89=B9=E8=AF=AD</option><option value=3D"he">=E5=B8=8C=E4=BC=AF=E6=
+=9D=A5=E8=AF=AD</option><option value=3D"hi">=E5=8D=B0=E5=9C=B0=E8=AF=AD</o=
+ption><option value=3D"hr">=E5=85=8B=E7=BD=97=E5=9C=B0=E4=BA=9A=E8=AF=AD</o=
+ption><option value=3D"hu">=E5=8C=88=E7=89=99=E5=88=A9=E8=AF=AD</option><op=
+tion value=3D"hy">=E4=BA=9A=E7=BE=8E=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><op=
+tion value=3D"id">=E5=8D=B0=E5=BA=A6=E5=B0=BC=E8=A5=BF=E4=BA=9A=E8=AF=AD</o=
+ption><option value=3D"is">=E5=86=B0=E5=B2=9B=E8=AF=AD</option><option valu=
+e=3D"it">=E6=84=8F=E5=A4=A7=E5=88=A9=E8=AF=AD</option><option value=3D"ka">=
+=E6=A0=BC=E9=B2=81=E5=90=89=E4=BA=9A=E8=AF=AD</option><option value=3D"kk">=
+=E5=93=88=E8=90=A8=E5=85=8B=E8=AF=AD</option><option value=3D"kn">=E5=8D=A1=
+=E7=BA=B3=E6=8B=89=E8=AF=AD</option><option value=3D"kok">=E5=AD=94=E5=8D=
+=A1=E5=B0=BC=E8=AF=AD</option><option value=3D"ky">=E5=90=89=E5=B0=94=E5=90=
+=89=E6=96=AF=E8=AF=AD</option><option value=3D"lt">=E7=AB=8B=E9=99=B6=E5=AE=
+=9B=E8=AF=AD</option><option value=3D"lv">=E6=8B=89=E8=84=B1=E7=BB=B4=E4=BA=
+=9A=E8=AF=AD</option><option value=3D"mi">=E6=AF=9B=E5=88=A9=E8=AF=AD</opti=
+on><option value=3D"mk">=E9=A9=AC=E5=85=B6=E9=A1=BF=E8=AF=AD</option><optio=
+n value=3D"mn">=E8=92=99=E5=8F=A4=E8=AF=AD</option><option value=3D"mr">=E9=
+=A9=AC=E6=8B=89=E5=9C=B0=E8=AF=AD</option><option value=3D"ms">=E9=A9=AC=E6=
+=9D=A5=E8=AF=AD</option><option value=3D"mt">=E9=A9=AC=E8=80=B3=E4=BB=96=E8=
+=AF=AD</option><option value=3D"nb">=E6=8C=AA=E5=A8=81=E8=AF=AD(=E4=BC=AF=
+=E5=85=8B=E6=A2=85=E5=B0=94)</option><option value=3D"nl">=E8=8D=B7=E5=85=
+=B0=E8=AF=AD</option><option value=3D"ns">=E5=8C=97=E6=A2=AD=E6=89=98=E8=AF=
+=AD</option><option value=3D"pa">=E6=97=81=E9=81=AE=E6=99=AE=E8=AF=AD</opti=
+on><option value=3D"pl">=E6=B3=A2=E5=85=B0=E8=AF=AD</option><option value=
+=3D"pt">=E8=91=A1=E8=90=84=E7=89=99=E8=AF=AD</option><option value=3D"qu">=
+=E5=85=8B=E4=B8=98=E4=BA=9A=E8=AF=AD</option><option value=3D"ro">=E7=BD=97=
+=E9=A9=AC=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=3D"sa">=E6=A2=B5=
+=E6=96=87</option><option value=3D"se">=E5=8C=97=E8=90=A8=E6=91=A9=E6=96=AF=
+=E8=AF=AD</option><option value=3D"sk">=E6=96=AF=E6=B4=9B=E4=BC=90=E5=85=8B=
+=E8=AF=AD</option><option value=3D"sl">=E6=96=AF=E6=B4=9B=E6=96=87=E5=B0=BC=
+=E4=BA=9A=E8=AF=AD</option><option value=3D"sq">=E9=98=BF=E5=B0=94=E5=B7=B4=
+=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=3D"sv">=E7=91=9E=E5=85=B8=
+=E8=AF=AD</option><option value=3D"sw">=E6=96=AF=E7=93=A6=E5=B8=8C=E9=87=8C=
+=E8=AF=AD</option><option value=3D"syr">=E5=8F=99=E5=88=A9=E4=BA=9A=E8=AF=
+=AD</option><option value=3D"ta">=E6=B3=B0=E7=B1=B3=E5=B0=94=E8=AF=AD</opti=
+on><option value=3D"te">=E6=B3=B0=E5=8D=A2=E5=9B=BA=E8=AF=AD</option><optio=
+n value=3D"tl">=E5=A1=94=E5=8A=A0=E8=B7=AF=E8=AF=AD</option><option value=
+=3D"tn">=E8=8C=A8=E7=93=A6=E7=BA=B3=E8=AF=AD</option><option value=3D"tr">=
+=E5=9C=9F=E8=80=B3=E5=85=B6=E8=AF=AD</option><option value=3D"ts">=E5=AE=97=
+=E5=8A=A0=E8=AF=AD</option><option value=3D"tt">=E9=9E=91=E9=9D=BC=E8=AF=AD=
+</option><option value=3D"uk">=E4=B9=8C=E5=85=8B=E5=85=B0=E8=AF=AD</option>=
+<option value=3D"ur">=E4=B9=8C=E9=83=BD=E8=AF=AD</option><option value=3D"u=
+z">=E4=B9=8C=E5=85=B9=E5=88=AB=E5=85=8B=E8=AF=AD</option><option value=3D"v=
+i">=E8=B6=8A=E5=8D=97=E8=AF=AD</option><option value=3D"xh">=E7=8F=AD=E5=9B=
+=BE=E8=AF=AD</option><option value=3D"zu">=E7=A5=96=E9=B2=81=E8=AF=AD</opti=
+on> </select> <st-div class=3D"__exchange__"> <st-span class=3D"st-icon-exc=
+hange"></st-span> </st-div> <select> <option value=3D"">=E8=87=AA=E5=8A=A8=
+=E9=80=89=E6=8B=A9</option> <option value=3D"zh">=E4=B8=AD=E6=96=87</option=
+><option value=3D"zh-CN">=E4=B8=AD=E6=96=87(=E7=AE=80=E4=BD=93)</option><op=
+tion value=3D"zh-HK">=E4=B8=AD=E6=96=87(=E9=A6=99=E6=B8=AF)</option><option=
+ value=3D"zh-TW">=E4=B8=AD=E6=96=87(=E7=B9=81=E4=BD=93)</option><option val=
+ue=3D"en">=E8=8B=B1=E8=AF=AD</option><option value=3D"ja">=E6=97=A5=E8=AF=
+=AD</option><option value=3D"ko">=E6=9C=9D=E9=B2=9C=E8=AF=AD</option><optio=
+n value=3D"de">=E5=BE=B7=E8=AF=AD</option><option value=3D"fr">=E6=B3=95=E8=
+=AF=AD</option><option value=3D"ru">=E4=BF=84=E8=AF=AD</option><option valu=
+e=3D"th">=E6=B3=B0=E8=AF=AD</option><option value=3D"af">=E5=8D=97=E9=9D=9E=
+=E8=AF=AD</option><option value=3D"ar">=E9=98=BF=E6=8B=89=E4=BC=AF=E8=AF=AD=
+</option><option value=3D"az">=E9=98=BF=E5=A1=9E=E6=8B=9C=E7=96=86=E8=AF=AD=
+</option><option value=3D"be">=E6=AF=94=E5=88=A9=E6=97=B6=E8=AF=AD</option>=
+<option value=3D"bg">=E4=BF=9D=E5=8A=A0=E5=88=A9=E4=BA=9A=E8=AF=AD</option>=
+<option value=3D"ca">=E5=8A=A0=E6=B3=B0=E9=9A=86=E8=AF=AD</option><option v=
+alue=3D"cs">=E6=8D=B7=E5=85=8B=E8=AF=AD</option><option value=3D"cy">=E5=A8=
+=81=E5=B0=94=E5=A3=AB=E8=AF=AD</option><option value=3D"da">=E4=B8=B9=E9=BA=
+=A6=E8=AF=AD</option><option value=3D"dv">=E7=AC=AC=E7=BB=B4=E5=9F=83=E8=AF=
+=AD</option><option value=3D"el">=E5=B8=8C=E8=85=8A=E8=AF=AD</option><optio=
+n value=3D"eo">=E4=B8=96=E7=95=8C=E8=AF=AD</option><option value=3D"es">=E8=
+=A5=BF=E7=8F=AD=E7=89=99=E8=AF=AD</option><option value=3D"et">=E7=88=B1=E6=
+=B2=99=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=3D"eu">=E5=B7=B4=E5=
+=A3=AB=E5=85=8B=E8=AF=AD</option><option value=3D"fa">=E6=B3=95=E6=96=AF=E8=
+=AF=AD</option><option value=3D"fi">=E8=8A=AC=E5=85=B0=E8=AF=AD</option><op=
+tion value=3D"fo">=E6=B3=95=E7=BD=97=E8=AF=AD</option><option value=3D"gl">=
+=E5=8A=A0=E9=87=8C=E8=A5=BF=E4=BA=9A=E8=AF=AD</option><option value=3D"gu">=
+=E5=8F=A4=E5=90=89=E6=8B=89=E7=89=B9=E8=AF=AD</option><option value=3D"he">=
+=E5=B8=8C=E4=BC=AF=E6=9D=A5=E8=AF=AD</option><option value=3D"hi">=E5=8D=B0=
+=E5=9C=B0=E8=AF=AD</option><option value=3D"hr">=E5=85=8B=E7=BD=97=E5=9C=B0=
+=E4=BA=9A=E8=AF=AD</option><option value=3D"hu">=E5=8C=88=E7=89=99=E5=88=A9=
+=E8=AF=AD</option><option value=3D"hy">=E4=BA=9A=E7=BE=8E=E5=B0=BC=E4=BA=9A=
+=E8=AF=AD</option><option value=3D"id">=E5=8D=B0=E5=BA=A6=E5=B0=BC=E8=A5=BF=
+=E4=BA=9A=E8=AF=AD</option><option value=3D"is">=E5=86=B0=E5=B2=9B=E8=AF=AD=
+</option><option value=3D"it">=E6=84=8F=E5=A4=A7=E5=88=A9=E8=AF=AD</option>=
+<option value=3D"ka">=E6=A0=BC=E9=B2=81=E5=90=89=E4=BA=9A=E8=AF=AD</option>=
+<option value=3D"kk">=E5=93=88=E8=90=A8=E5=85=8B=E8=AF=AD</option><option v=
+alue=3D"kn">=E5=8D=A1=E7=BA=B3=E6=8B=89=E8=AF=AD</option><option value=3D"k=
+ok">=E5=AD=94=E5=8D=A1=E5=B0=BC=E8=AF=AD</option><option value=3D"ky">=E5=
+=90=89=E5=B0=94=E5=90=89=E6=96=AF=E8=AF=AD</option><option value=3D"lt">=E7=
+=AB=8B=E9=99=B6=E5=AE=9B=E8=AF=AD</option><option value=3D"lv">=E6=8B=89=E8=
+=84=B1=E7=BB=B4=E4=BA=9A=E8=AF=AD</option><option value=3D"mi">=E6=AF=9B=E5=
+=88=A9=E8=AF=AD</option><option value=3D"mk">=E9=A9=AC=E5=85=B6=E9=A1=BF=E8=
+=AF=AD</option><option value=3D"mn">=E8=92=99=E5=8F=A4=E8=AF=AD</option><op=
+tion value=3D"mr">=E9=A9=AC=E6=8B=89=E5=9C=B0=E8=AF=AD</option><option valu=
+e=3D"ms">=E9=A9=AC=E6=9D=A5=E8=AF=AD</option><option value=3D"mt">=E9=A9=AC=
+=E8=80=B3=E4=BB=96=E8=AF=AD</option><option value=3D"nb">=E6=8C=AA=E5=A8=81=
+=E8=AF=AD(=E4=BC=AF=E5=85=8B=E6=A2=85=E5=B0=94)</option><option value=3D"nl=
+">=E8=8D=B7=E5=85=B0=E8=AF=AD</option><option value=3D"ns">=E5=8C=97=E6=A2=
+=AD=E6=89=98=E8=AF=AD</option><option value=3D"pa">=E6=97=81=E9=81=AE=E6=99=
+=AE=E8=AF=AD</option><option value=3D"pl">=E6=B3=A2=E5=85=B0=E8=AF=AD</opti=
+on><option value=3D"pt">=E8=91=A1=E8=90=84=E7=89=99=E8=AF=AD</option><optio=
+n value=3D"qu">=E5=85=8B=E4=B8=98=E4=BA=9A=E8=AF=AD</option><option value=
+=3D"ro">=E7=BD=97=E9=A9=AC=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=
+=3D"sa">=E6=A2=B5=E6=96=87</option><option value=3D"se">=E5=8C=97=E8=90=A8=
+=E6=91=A9=E6=96=AF=E8=AF=AD</option><option value=3D"sk">=E6=96=AF=E6=B4=9B=
+=E4=BC=90=E5=85=8B=E8=AF=AD</option><option value=3D"sl">=E6=96=AF=E6=B4=9B=
+=E6=96=87=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=3D"sq">=E9=98=BF=
+=E5=B0=94=E5=B7=B4=E5=B0=BC=E4=BA=9A=E8=AF=AD</option><option value=3D"sv">=
+=E7=91=9E=E5=85=B8=E8=AF=AD</option><option value=3D"sw">=E6=96=AF=E7=93=A6=
+=E5=B8=8C=E9=87=8C=E8=AF=AD</option><option value=3D"syr">=E5=8F=99=E5=88=
+=A9=E4=BA=9A=E8=AF=AD</option><option value=3D"ta">=E6=B3=B0=E7=B1=B3=E5=B0=
+=94=E8=AF=AD</option><option value=3D"te">=E6=B3=B0=E5=8D=A2=E5=9B=BA=E8=AF=
+=AD</option><option value=3D"tl">=E5=A1=94=E5=8A=A0=E8=B7=AF=E8=AF=AD</opti=
+on><option value=3D"tn">=E8=8C=A8=E7=93=A6=E7=BA=B3=E8=AF=AD</option><optio=
+n value=3D"tr">=E5=9C=9F=E8=80=B3=E5=85=B6=E8=AF=AD</option><option value=
+=3D"ts">=E5=AE=97=E5=8A=A0=E8=AF=AD</option><option value=3D"tt">=E9=9E=91=
+=E9=9D=BC=E8=AF=AD</option><option value=3D"uk">=E4=B9=8C=E5=85=8B=E5=85=B0=
+=E8=AF=AD</option><option value=3D"ur">=E4=B9=8C=E9=83=BD=E8=AF=AD</option>=
+<option value=3D"uz">=E4=B9=8C=E5=85=B9=E5=88=AB=E5=85=8B=E8=AF=AD</option>=
+<option value=3D"vi">=E8=B6=8A=E5=8D=97=E8=AF=AD</option><option value=3D"x=
+h">=E7=8F=AD=E5=9B=BE=E8=AF=AD</option><option value=3D"zu">=E7=A5=96=E9=B2=
+=81=E8=AF=AD</option> </select> </st-div> <st-div> <select> <option value=
+=3D"YouDao">=E6=9C=89=E9=81=93=E7=BF=BB=E8=AF=91</option> <option value=3D"=
+BaiDu">=E7=99=BE=E5=BA=A6=E7=BF=BB=E8=AF=91</option> <option value=3D"Googl=
+e">=E8=B0=B7=E6=AD=8C=E7=BF=BB=E8=AF=91</option> <option value=3D"GoogleCN"=
+>=E8=B0=B7=E6=AD=8C=E7=BF=BB=E8=AF=91=EF=BC=88=E5=9B=BD=E5=86=85=EF=BC=89</=
+option> </select> <st-div class=3D"__action-list__"> <st-div class=3D"__but=
+ton__ __btn-translate__">=E7=BF=BB=E8=AF=91 <st-span class=3D"st-icon-down-=
+dir"></st-span> </st-div> <st-div class=3D"__expand__"> <st-div class=3D"__=
+button__">=E6=9C=97=E8=AF=BB</st-div> <st-div class=3D"__button__">=E5=A4=
+=8D=E5=88=B6</st-div> </st-div> </st-div> </st-div> </st-div> <st-div class=
+=3D"__translate-result__" style=3D"display: none;">=E6=AD=A3=E5=9C=A8=E6=9F=
+=A5=E8=AF=A2=EF=BC=8C=E8=AF=B7=E7=A8=8D=E5=80=99=E2=80=A6=E2=80=A6</st-div>=
+ <st-div class=3D"__translate-result__"> <st-div style=3D"display: none;"> =
+<st-span></st-span> <st-span class=3D"__retry__">=E9=87=8D=E8=AF=95</st-spa=
+n> </st-div> <st-div> <st-div class=3D"__phonetic__"> <st-span style=3D"dis=
+play: none;"></st-span> <st-span class=3D"__copy-and-read__"> <st-span>=E6=
+=9C=97=E8=AF=BB</st-span> <st-span style=3D"display: none;">=E5=A4=8D=E5=88=
+=B6</st-span> </st-span> </st-div> <st-div style=3D"display: none;"> <st-ul=
+>  </st-ul> <st-div class=3D"__copy-and-read__"> <st-span class=3D"__copy-a=
+nd-read__">=E5=A4=8D=E5=88=B6</st-span> </st-div> </st-div> <st-div style=
+=3D"display: none;">  <st-div class=3D"__copy-and-read__"> <st-span class=
+=3D"__copy-and-read__">=E6=9C=97=E8=AF=BB</st-span> <st-span class=3D"__cop=
+y-and-read__">=E5=A4=8D=E5=88=B6</st-span> </st-div> </st-div> </st-div> </=
+st-div> <st-footer> <st-span style=3D"">via <a target=3D"_blank" href=3D"ht=
+tps://go.googlesource.com/proposal/+/master/design/25530-sumdb.md">=E8=B0=
+=B7=E6=AD=8C=E7=BF=BB=E8=AF=91=EF=BC=88=E5=9B=BD=E5=86=85=EF=BC=89</a></st-=
+span> </st-footer> </st-div> <st-div class=3D"__st-btn__" style=3D"display:=
+ none; position: fixed; z-index: 99999; left: 0px; top: 0px; transform: tra=
+nslateX(0px) translateY(0px);">=E8=AF=91</st-div> </st-div></body></html>
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://go.googlesource.com/+static/base.FgwOs7Bvh5E6-lzR-xJuUQ.cache.css
+
+@charset "utf-8";
+
+@import url("//fonts.googleapis.com/css?family=3DOpen+Sans:300,400,700&subs=
+et=3Dlatin,cyrillic-ext,greek-ext,cyrillic,greek,vietnamese,latin-ext");
+
+@import url("//fonts.googleapis.com/css?family=3DSource+Code+Pro");
+
+*, ::after, ::before { box-sizing: border-box; margin: 0px; padding: 0px; }
+
+h1, h2, h3, h4, h5, h6 { font-weight: normal; margin: 0.25em 0px 0.5em; }
+
+h1 { font-size: 2em; }
+
+h2 { font-size: 1.5em; }
+
+h3 { font-size: 1.3em; }
+
+h4, h5, h6 { font-size: 14px; font-style: italic; }
+
+ul, ol { list-style: none; }
+
+.u-sha1 { background-color: rgb(241, 242, 243); color: rgb(0, 0, 0); font-s=
+ize: 13px; }
+
+.u-pre { font-size: 10pt; font-weight: 500; white-space: pre; }
+
+.u-lineNum { border-right: 1px solid rgb(241, 242, 243); color: rgb(102, 10=
+2, 102); display: inline-block; min-width: 3em; text-align: right; }
+
+.u-noSelect { user-select: none; }
+
+.u-monospace { font-family: "Source Code Pro", monospace; }
+
+.Site { background: rgb(255, 255, 255); color: rgb(0, 0, 0); display: flex;=
+ font: 14px / 1.54 "Open Sans", sans-serif; min-height: 100vh; flex-directi=
+on: column; }
+
+.Site-header, .Site-footer { background: rgb(238, 238, 238); flex: 0 0 auto=
+; }
+
+.Site-header--withNavbar { background: rgb(255, 255, 255); }
+
+.Site-content { flex: 1 0 auto; padding: 20px; }
+
+.Container { margin: 0px auto; max-width: 980px; }
+
+.Container--fullWidth { max-width: none; }
+
+.Header, .Footer { align-items: center; display: flex; padding: 20px; }
+
+.Site-header--withNavbar .Header { max-width: 980px; margin: 0px auto; padd=
+ing: 10px 0px; }
+
+.Header-title, .Header-image { display: flex; flex: 1 1 0%; }
+
+.Header-anchor { color: rgb(102, 102, 102); font-size: 32px; font-weight: 3=
+00; text-decoration: none; }
+
+.Header-anchorLogo { display: inline-block; margin-right: 10px; vertical-al=
+ign: middle; }
+
+.Header-nav { background: rgb(238, 238, 238); padding: 15px 0px; }
+
+.Header-menu { display: flex; justify-content: flex-end; }
+
+.Header-menuItem { color: rgb(0, 0, 238); display: inline-block; margin-lef=
+t: 15px; }
+
+.Header-menuItem--noAction { color: inherit; }
+
+.Breadcrumbs { font-size: 18px; margin-bottom: 20px; }
+
+.Breadcrumbs-crumb { color: rgb(0, 0, 238); }
+
+.Breadcrumbs-crumb:last-child { color: rgb(0, 0, 0); font-weight: bold; }
+
+.Footer { color: rgb(102, 102, 102); }
+
+.Footer-poweredBy { flex: 1 1 0%; }
+
+.Footer-formats, .Footer-links { display: flex; justify-content: flex-end; =
+}
+
+.Footer-formatsItem { display: inline-block; }
+
+.Footer-formatsItem:first-child { margin-right: 20px; }
+
+.Footer-link { display: inline-block; margin-left: 10px; }
+
+.RepoList-item { display: flex; left: -10px; padding: 5px 0px 5px 10px; pos=
+ition: relative; white-space: nowrap; width: calc(100% + 20px); }
+
+.RepoList-item:link, .RepoList-item:visited { text-decoration: none; }
+
+.RepoList-item:hover { background: rgb(238, 238, 238); }
+
+.RepoList-item--header { font-weight: bold; margin: 0px; }
+
+.RepoList-item--header:hover { background: rgb(255, 255, 255); }
+
+.RepoList-itemName, .RepoList-itemDescription { display: inline-block; }
+
+.RepoList-itemName { margin-right: 10px; min-width: 25%; text-decoration: u=
+nderline; }
+
+.RepoList-item--header > .RepoList-itemName { text-decoration: none; }
+
+.RepoList-itemDescription { color: rgb(0, 0, 0); flex: 1 1 0%; overflow: hi=
+dden; text-overflow: ellipsis; }
+
+.RepoDescription { margin: 10px 0px; }
+
+.RepoMirroredFrom { margin: 10px 0px; color: rgb(102, 102, 102); }
+
+.CloneRepo { background: rgb(238, 238, 238); margin-bottom: 20px; padding: =
+10px; }
+
+.CloneRepo-title { margin-bottom: 2px; }
+
+.CloneRepo-command { border: 1px solid rgb(204, 204, 204); border-radius: 4=
+px; display: block; font-size: inherit; padding: 10px; width: 100%; }
+
+.RepoShortlog { display: flex; }
+
+.RepoShortlog-refs { width: 20%; flex: 0 0 auto !important; }
+
+.RepoShortlog-refs > .RefList:first-child { margin: 0px; }
+
+.RepoShortlog-log { flex: 1 1 0%; width: 80%; }
+
+.RepoIndexDoc { border-top: 1px solid rgb(221, 221, 221); margin-top: 20px;=
+ padding-top: 5px; }
+
+.EmptyRepo-description { font-size: 14px; font-style: italic; }
+
+.RefList { margin: 15px 0px; }
+
+.RefList-title { margin: 0px; }
+
+.RefList-item { padding: 2px 0px; }
+
+.LogNav { margin: 10px 0px; text-align: center; }
+
+.CommitLog-item { padding: 2px 0px; }
+
+.CommitLog-item--oneline:hover { background: rgb(238, 238, 238); }
+
+.CommitLog-item--full { margin-bottom: 20px; }
+
+.CommitLog-item--empty { padding: 10px 0px; text-align: center; }
+
+.CommitLog-sha1 { border-radius: 3px; display: inline-block; margin-right: =
+3px; padding: 2px 4px; text-align: center; }
+
+.CommitLog-time { color: rgb(102, 102, 102); }
+
+.CommitLog-branchLabel { color: rgb(221, 75, 57); }
+
+.CommitLog-tagLabel { color: rgb(0, 153, 51); }
+
+.CommitLog-rename { font-size: 0.9em; display: block; padding-left: 5px; }
+
+.Metadata { margin-bottom: 15px; }
+
+.Metadata-title { font-weight: bold; padding-right: 10px; text-align: right=
+; }
+
+.MetadataMessage { background-color: rgb(250, 250, 250); border: 1px solid =
+rgb(204, 204, 204); color: rgb(0, 0, 0); margin: 0px; padding: 12px; white-=
+space: pre-wrap; }
+
+.DiffTree { margin: 10px 0px 5px; }
+
+.DiffTree-action { margin-left: 0.5em; }
+
+.DiffTree-action--add { color: rgb(0, 102, 0); }
+
+.DiffTree-action--delete { color: rgb(102, 0, 0); }
+
+.DiffTree-action--rename, .DiffTree-action--copy { color: rgb(0, 0, 102); }
+
+.TreeDetail-sha1, .BlobSha1 { margin: 10px 0px; padding: 5px 10px; }
+
+.FileList { margin-left: 25px; }
+
+.FileList-item { padding: 1px 0px; position: relative; }
+
+.FileList-item:hover { background: rgb(238, 238, 238); }
+
+.FileList-item::before { left: -22px; position: absolute; top: 4px; }
+
+.FileList-itemLink { display: block; }
+
+.FileList-item--gitTree::before { content: url("data:image/png;base64,iVBOR=
+w0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAN=
+1wAADdcBQiibeAAAAb5JREFUOMulkr1KA0EQgGdvTwwnYmER0gQsrFKmSy+pLESw9Qm0F/ICNnb=
+a+h6iEOuAEWslKJKTOyJJvIT72d1xZuOFC0giOLA77O7Mt/PnNptN+I+49Xr9GhH3f3mb0v1ht9=
+vtLAUYYw5ItkgDL3KyD8PhcLvdbl/WarXT3DjLMnAcR/f7/YfxeKwtgC5RKQVhGILWeg4hQ6hUK=
+jWyucmhLFEUuWR3QYBWAZABQ9i5CCmXy16pVALP80BKaaG+70MQBLvzFMjRKKXh8j6FSYKF7ITd=
+EWLa4/ktokN74wiqjSMpnVcbQZqmEJHz+ckeCPFjWKwULpyspAqhdXVXdcnZcPjsIgn+2BsVA8j=
+VYuWlgJ3yBj0icgq2uoK+lg4t+ZvLomSKamSQ4AI5BcMADtMhyNoSgNIISUaFNtwlazcDcBc4gj=
+jVwCWid2usCWroYEhnaqbzFJLUzAHIXRDChXCcQP8zhkSZ5eNLgHAUzwDcRu4CoIRn/wsGUQIIy=
+4Vr9TH6SYFCNzw4nALn5627K4vIttOUOwfa5YnrDYzt/9OLv9I5l8kk5hZ3XLO20b7tbR7zHLy/=
+BX8G0IeBEM7ZN1NGIaFUaKLgAAAAAElFTkSuQmCC"); }
+
+.FileList-item--symlink::before { content: url("data:image/png;base64,iVBOR=
+w0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMA=
+AA3XAAAN1wFCKJt4AAABZUlEQVQ4y2NgIAL4zWL7D8TGDOQCqAEg7Ey2Aes+58AMcSSkmB2I3YB=
+4HhCfh9kOMoCgIUAJMyDe2D+b58jKe553133M+r/uU/b/zV+L/y97n/i/+JIYbkOAAl5AfGLNTd=
+e/69+n/1/4MuD/gtsqKBhkALIh5S0M1jDN2kC8a+UNt/8b36f+X3JP5f/0u1pwjeuvS8E1g3DpZ=
+Qm4ITAD5s09ZPBq49uE/0vvq4E1gPCJC5z/yy+IoGgG4a5HJqjeCJ3Pc2vjy+T/ux4Y/j99Rfz/=
+7GtK/xfeUkbBN+8pY9cMAkFzuT5uepPy/+w1lf+TF3L/Q4p3OD5zRQ67Zlg873vk9n/mMlaQ5Ec=
+gLgZiA2R5nJphCjbfNP8LVeCBJyUa40xpO+5afQXS/8jKC0DJg+uPKx+bOJf1HDYXEJPW46JW8L=
+cduKYzbdZMph4gn4ccQxSAOAuIo4FYdvsKFpYdK1iYCekDACq5JXDHGJhDAAAAAElFTkSuQmCC"=
+); }
+
+.FileList-item--regularFile::before { content: url("data:image/png;base64,i=
+VBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBI=
+WXMAAAsTAAALEwEAmpwYAAAAtElEQVQ4ja2TSw7CIBRFu0r3wyIYsAMHDl1CC92IDqC0wAbQi4F=
+o5VOMJGcAyT33vQEDY+xCCPGdnIZ48NB7kPkSLMvipZQBpVQC70Br7Y0xZQGC4zj6aZoCnPMPhB=
+Btwb41NoN1XesCBHPNhyfI7fziFu6HJti3IgS0vrcFuZ3Btm2JpmC/M5jnOdEU5JoRstYmigKES=
+80x7JyrC+IE7+1xAoSrgp//AqX02vsbn5nz8K/zAP9CzjbgFoHjAAAAAElFTkSuQmCC"); }
+
+.FileList-item--executableFile::before { content: url("data:image/png;base6=
+4,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA7ADsAOwdIxY2AAAAC=
+XBIWXMAAAsTAAALEwEAmpwYAAABOklEQVQ4T5WTTYqDQBBGPdKcZnIJdy7EVRByBQPi0iwHAlGT=
+0YBHcG82kkV2VnffoKar7FYzIQYLPtqffq+rEJ04jn/CMMSV+XZs0YO1RcyLoO/7MdAD9gAI8wi=
+K+CyYA0IDFABhrmFBAHNYbwYTIxFyWN8KwAiEmIEaknqVUposCoBBGE8cIGUipUKp5IJAzOe2Jx=
+I0pG1b3Gw2+Hg8FjoQzy0rLVAavt0GuGkaXrfb7avAzs0CNcHtDD4ejwzTve/7X/9GGFqn2QmkD=
+mzbBJ9OJ8yyDNM0Rdd1J8mzgDqQPDNJLFwUBZ7PZ7xcLizwPI9gfj+NYAX2k+kx7vc7byrLEquq=
+wuv1ivv9HpMk4ec6Uwfvqus63lzXNeZ5zoIRpoqiKP/09wVBwNDhcOB1t9v9OmuLTnw62dQfVIH=
+PYx/I/0kAAAAASUVORK5CYII=3D"); }
+
+.FileList-item--gitlink::before { content: url("data:image/png;base64,iVBOR=
+w0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMA=
+AA3XAAAN1wFCKJt4AAABO0lEQVQ4T7WT3U6EMBCF92m99yGMZuODGL01eueyXqjvwc+WUlooUPk=
+fZxq3sQEvJLHJSQvlfDOnDbub/dUFCrZof3t9uaPF1kFeBwjD8E+apukfAVEUQRzHkCQJJKfEzn=
+ES43tUGP0OIOMheIGn50e4f7izCo4H4GkKDEXPBIviCIZh8AFkfv94g5Qx4Jw7AOn4Grh1iqATd=
+rUAEJmxFLIsgzzPQSnpQc4SIkMIh7ZtfQCjys6soNQlVFW1AEgpQWQCjDE+gHIKIaxZo7mu69UO=
+iqJwRXxAxnFDQllS5XUzSeO+kmoJoOzUni41NE1tM9JBTdMII85d14FpjI2lihUA9wCNA8zzDOM=
+4WkBjvgFqrQO8ulzmNgLl/8SPyTT0WL3vLLBGsNZ6HUBV1tT3vROd/Fk/AZt/Z/J+AUN8ayghXm=
+ezAAAAAElFTkSuQmCC"); }
+
+.FileContents { border-collapse: collapse; border-spacing: 0px; margin: 10p=
+x 0px; }
+
+.FileContents-line { border: none; }
+
+.FileContents-lineNum { padding-right: 10px; width: 1%; }
+
+.FileContents-lineNum::before { color: rgb(170, 170, 170); content: attr(da=
+ta-line-number); cursor: pointer; }
+
+.FileContents-lineContents { line-height: 1.3em; min-height: 1em; padding-l=
+eft: 10px; }
+
+.FileContents-lineContents:target { background: rgb(207, 216, 220); }
+
+.InlineReadme { border-top: 1px solid rgb(221, 221, 221); margin: 10px 0px;=
+ padding: 7px 0px; }
+
+.InlineReadme-path { color: rgb(102, 102, 102); }
+
+.Blame { border-collapse: collapse; font-size: 8pt; margin: 0px auto; }
+
+.Blame-region--bg1 { background: rgb(255, 255, 255); }
+
+.Blame-region--bg2 { background: rgb(241, 242, 243); }
+
+.Blame-sha1, .Blame-author, .Blame-time, .Blame-regionLink { font-size: 8pt=
+; padding: 0px 3px; white-space: nowrap; }
+
+.Blame-regionLink { text-align: right; }
+
+.Blame-lineNum .u-lineNum { padding: 0px 8px; text-align: right; }
+
+.Blame-lineNum:hover { text-decoration: underline; }
+
+.Blame-lineContent { font-size: 9pt; line-height: 1.3em; padding: 0px 8px; =
+}
+
+.Diff { margin: 10px 0px; }
+
+.Diff-fileIndex { color: rgb(68, 68, 68); font-weight: bold; }
+
+.Diff-unified { border-bottom: 1px solid rgb(221, 221, 221); border-top: 1p=
+x solid rgb(221, 221, 221); padding: 10px 0px; }
+
+.Diff-hunk { color: rgb(0, 0, 204); }
+
+.Diff-delete { color: rgb(204, 0, 0); }
+
+.Diff-insert { color: rgb(0, 136, 0); }
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://fonts.googleapis.com/css?family=Open+Sans:300,400,700&subset=latin,cyrillic-ext,greek-ext,cyrillic,greek,vietnamese,latin-ext
+
+@charset "utf-8";
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OX-hpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+460-52F, U+1C80-1C88, U+20B4, U+2DE0-2DFF,=
+ U+A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OVuhpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OXuhpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+1F00-1FFF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OUehpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+370-3FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OXehpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-169, =
+U+1A0-1A1, U+1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OXOhpKKSTj5PW.woff2") f=
+ormat("woff2"); unicode-range: U+100-24F, U+259, U+1E00-1EFF, U+2020, U+20A=
+0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 300=
+; src: local("Open Sans Light"), local("OpenSans-Light"), url("https://font=
+s.gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN_r8OUuhpKKSTjw.woff2") for=
+mat("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+=
+2DA, U+2DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+=
+2215, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFWJ0bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+460-52F, U+1C80-1C88, U+20B4, U+2DE0-2DFF,=
+ U+A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFUZ0bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFWZ0bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+1F00-1FFF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFVp0bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+370-3FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFWp0bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-169, =
+U+1A0-1A1, U+1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFW50bf8pkAp6a.woff2") f=
+ormat("woff2"); unicode-range: U+100-24F, U+259, U+1E00-1EFF, U+2020, U+20A=
+0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 400=
+; src: local("Open Sans Regular"), local("OpenSans-Regular"), url("https://=
+fonts.gstatic.com/s/opensans/v17/mem8YaGs126MiZpBA-UFVZ0bf8pkAg.woff2") for=
+mat("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+=
+2DA, U+2DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+=
+2215, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOX-hpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+460-52F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U=
++A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOVuhpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOXuhpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+1F00-1FFF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOUehpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+370-3FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOXehpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+=
+1A0-1A1, U+1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOXOhpKKSTj5PW.woff2") for=
+mat("woff2"); unicode-range: U+100-24F, U+259, U+1E00-1EFF, U+2020, U+20A0-=
+20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Open Sans"; font-style: normal; font-weight: 700=
+; src: local("Open Sans Bold"), local("OpenSans-Bold"), url("https://fonts.=
+gstatic.com/s/opensans/v17/mem5YaGs126MiZpBA-UN7rgOUuhpKKSTjw.woff2") forma=
+t("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2D=
+A, U+2DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+22=
+15, U+FEFF, U+FFFD; }
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://fonts.googleapis.com/css?family=Source+Code+Pro
+
+@charset "utf-8";
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlMOvWnsUnxlC9.woff2") format("woff2"); unicode-range: U+460-52F, U+1=
+C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlOevWnsUnxlC9.woff2") format("woff2"); unicode-range: U+400-45F, U+4=
+90-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlPuvWnsUnxlC9.woff2") format("woff2"); unicode-range: U+370-3FF; }
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlMuvWnsUnxlC9.woff2") format("woff2"); unicode-range: U+102-103, U+1=
+10-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-1B0, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlM-vWnsUnxlC9.woff2") format("woff2"); unicode-range: U+100-24F, U+2=
+59, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A=
+720-A7FF; }
+
+@font-face { font-family: "Source Code Pro"; font-style: normal; font-weigh=
+t: 400; src: local("Source Code Pro Regular"), local("SourceCodePro-Regular=
+"), url("https://fonts.gstatic.com/s/sourcecodepro/v11/HI_SiYsKILxRpg3hIP6s=
+J7fM7PqlPevWnsUnxg.woff2") format("woff2"); unicode-range: U+0-FF, U+131, U=
++152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+2000-206F, U+2074, U+20AC, U+21=
+22, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://go.googlesource.com/+static/doc.aizEIcp0qpW8JIXIrCB9UQ.cache.css
+
+@charset "utf-8";
+
+.Site-Content--markdown { padding-top: 0px; }
+
+.Header-nav ul { max-width: 980px; margin: 0px auto; }
+
+.Header-nav li { display: inline-block; margin-right: 15px; }
+
+.doc h1, .doc h2, .doc h3, .doc h4, .doc h5, .doc h6 { font-weight: normal;=
+ margin: 1.236em 0px 0.618em; }
+
+.doc.RepoIndexDoc h1 { margin-top: 0.25em; }
+
+.doc h1 { font-size: 2em; }
+
+.doc h2 { font-size: 1.5em; }
+
+.doc h3 { font-size: 1.3em; }
+
+.doc h4 { font-size: 1.3em; font-weight: lighter; font-style: italic; }
+
+.doc h5 { font-size: 16px; font-weight: lighter; font-style: italic; }
+
+.doc h6 { font-size: 14px; font-style: italic; }
+
+.doc hr { border-right: none; border-bottom: none; border-left: none; borde=
+r-image: initial; border-top: 1px solid rgb(170, 170, 170); display: block;=
+ margin-top: 25px; }
+
+.doc a { text-decoration: none; }
+
+.doc a:link { color: rgb(36, 93, 193); }
+
+.doc a:visited { color: rgb(119, 89, 174); }
+
+.doc a:hover { text-decoration: underline; }
+
+.doc a.h { display: inline-block; font-weight: normal; width: 1.5em; margin=
+-left: -1.5em; margin-top: -1em; margin-bottom: -1em; }
+
+.doc a.h:link, .doc a.h:visited { color: rgb(68, 68, 68); }
+
+.doc a.h:focus { outline: none; }
+
+.doc a.h:hover { text-decoration: none; }
+
+.doc a.h span { display: inline-block; width: 1.5em; }
+
+.doc h1:hover a.h span::before, .doc h2:hover a.h span::before, .doc h3:hov=
+er a.h span::before, .doc h4:hover a.h span::before, .doc h5:hover a.h span=
+::before, .doc h6:hover a.h span::before { content: "#"; font-weight: norma=
+l; color: rgb(170, 170, 170); }
+
+.doc h1:hover a:hover.h span::before, .doc h2:hover a:hover.h span::before,=
+ .doc h3:hover a:hover.h span::before, .doc h4:hover a:hover.h span::before=
+, .doc h5:hover a:hover.h span::before, .doc h6:hover a:hover.h span::befor=
+e { text-decoration: underline; }
+
+.doc h1:hover a:visited.h span::before, .doc h2:hover a:visited.h span::bef=
+ore, .doc h3:hover a:visited.h span::before, .doc h4:hover a:visited.h span=
+::before, .doc h5:hover a:visited.h span::before, .doc h6:hover a:visited.h=
+ span::before { color: rgb(170, 170, 170); }
+
+.doc ul, .doc ol { margin: 10px 10px 10px 30px; padding: 0px; }
+
+.doc ul { list-style-type: disc; }
+
+.doc ol { list-style-type: decimal; }
+
+.doc img { border: 0px; max-width: 100%; }
+
+.doc iframe { min-width: 100px; min-height: 30px; }
+
+iframe.noborder { border: 0px; }
+
+.doc em { font-weight: normal; font-style: italic; }
+
+.doc strong { font-weight: bold; color: inherit; }
+
+.doc p { margin: 10px 0px; }
+
+.doc blockquote { background-color: rgb(255, 253, 231); border-left: 2px so=
+lid rgb(250, 183, 0); padding: 2px 10px; }
+
+.doc pre { padding: 12px; font-size: 10pt; background-color: rgb(250, 250, =
+250); border: 1px solid rgb(204, 204, 204); overflow-x: auto; }
+
+.doc code { padding: 2px 4px; background-color: rgb(245, 245, 245); border:=
+ transparent; border-radius: 4px; }
+
+.doc .code { font-family: "Source Code Pro", monospace; }
+
+.doc dl dt { margin-top: 1em; }
+
+.doc table { border-collapse: collapse; border-spacing: 0px; }
+
+.doc th { text-align: center; }
+
+.doc th, .doc td { border: 1px solid rgb(238, 238, 238); padding: 4px 12px;=
+ vertical-align: top; }
+
+.doc th { background-color: rgb(245, 245, 245); }
+
+.toc { margin-top: 30px; }
+
+.toc-aux { background: rgb(249, 249, 249); border: 1px solid rgb(242, 242, =
+242); }
+
+.toc h2 { margin: 0px 0px 5px; }
+
+.toc ul { margin: 10px 10px 10px 30px; }
+
+.toc ul li { margin-left: 0px; list-style: disc; }
+
+.toc ul ul { margin-top: 0px; margin-bottom: 0px; }
+
+.toc ul ul li { list-style: circle; }
+
+.note, .promo, .aside { border: 1px solid; border-radius: 4px; margin: 10px=
+ 0px; padding: 10px; }
+
+.note { background: rgb(255, 251, 228); border-color: rgb(248, 246, 230); }
+
+.promo { background: rgb(246, 249, 255); border-color: rgb(239, 242, 249); =
+}
+
+.aside { background: rgb(249, 249, 249); border-color: rgb(242, 242, 242); =
+}
+
+.note :first-child, .promo :first-child, .aside :first-child { margin-top: =
+0px; }
+
+.note p:last-child, .promo p:last-child, .aside p:last-child { margin-botto=
+m: 0px; }
+
+.cols { margin: 0px -1.533%; width: 103.067%; }
+
+.col-1, .col-2, .col-3, .col-4, .col-5, .col-6, .col-7, .col-8, .col-9, .co=
+l-10, .col-11, .col-12 { display: inline-block; margin: 0px 1.488% 20px; ve=
+rtical-align: top; }
+
+.cols h1, .cols h2, .cols h3, .cols h4, .cols h5, .cols h6 { margin: 0.67em=
+ 0px; }
+
+.col-1 { width: 5.357%; }
+
+.col-2 { width: 13.69%; }
+
+.col-3 { width: 22.024%; }
+
+.col-4 { width: 30.357%; }
+
+.col-5 { width: 38.69%; }
+
+.col-6 { width: 47.024%; }
+
+.col-7 { width: 55.357%; }
+
+.col-8 { width: 63.69%; }
+
+.col-9 { width: 72.024%; }
+
+.col-10 { width: 80.357%; }
+
+.col-11 { width: 88.69%; }
+
+.col-12 { width: 97.024%; }
+
+.cols hr { width: 80%; }
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://go.googlesource.com/+static/prettify/prettify.AOMOBqJIPcDq491E2ExAAw.cache.css
+
+@charset "utf-8";
+
+.str { color: rgb(0, 136, 0); }
+
+.kwd { color: rgb(0, 0, 136); }
+
+.com { color: rgb(136, 0, 0); }
+
+.typ { color: rgb(102, 0, 102); }
+
+.lit { color: rgb(0, 102, 102); }
+
+.pun, .opn, .clo { color: rgb(102, 102, 0); }
+
+.pln { color: rgb(0, 0, 0); }
+
+.tag { color: rgb(0, 0, 136); }
+
+.atn { color: rgb(102, 0, 102); }
+
+.atv { color: rgb(0, 136, 0); }
+
+.dec { color: rgb(102, 0, 102); }
+
+@media print {
+  .str { color: rgb(0, 102, 0); }
+  .kwd { color: rgb(0, 0, 102); font-weight: bold; }
+  .com { color: rgb(102, 0, 0); font-style: italic; }
+  .typ { color: rgb(68, 0, 68); font-weight: bold; }
+  .lit { color: rgb(0, 68, 68); }
+  .pun, .opn, .clo { color: rgb(68, 68, 0); }
+  .pln { color: rgb(0, 0, 0); }
+  .tag { color: rgb(0, 0, 102); font-weight: bold; }
+  .atn { color: rgb(68, 0, 68); }
+  .atv { color: rgb(0, 102, 0); }
+}
+
+pre.prettyprint { padding: 2px; border: 1px solid rgb(136, 136, 136); }
+
+ol.linenums { margin-top: 0px; margin-bottom: 0px; }
+
+li.L0, li.L1, li.L2, li.L3, li.L5, li.L6, li.L7, li.L8 { list-style-type: n=
+one; }
+
+li.L1, li.L3, li.L5, li.L7, li.L9 { background: rgb(238, 238, 238); }
+------MultipartBoundary--XP1D40Oe9V7jXFMMYfO8EBqSP5DjcAevJGhf9d6aXi------
